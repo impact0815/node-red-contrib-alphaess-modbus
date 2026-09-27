@@ -1,0 +1,49 @@
+{
+	"name": "node-red-contrib-alphaess-modbus",
+	"version": "0.1.0",
+	"description": "Local Modbus TCP access to Alpha ESS storage systems for Node-RED: realtime data, daily energy, alarms, MQTT and optional control.",
+	"main": "alphaess-modbus.js",
+	"scripts": {
+		"test": "node --test test/*.test.js",
+		"simulator": "node test/mock-server.js 5020"
+	},
+	"keywords": [
+		"node-red",
+		"alpha-ess",
+		"alphaess",
+		"storion",
+		"smile",
+		"modbus",
+		"photovoltaic",
+		"battery",
+		"mqtt"
+	],
+	"author": "Stephanus Schulte <github@st-s.info>",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/impact0815/node-red-contrib-alphaess-modbus.git"
+	},
+	"bugs": {
+		"url": "https://github.com/impact0815/node-red-contrib-alphaess-modbus/issues"
+	},
+	"homepage": "https://github.com/impact0815/node-red-contrib-alphaess-modbus#readme",
+	"engines": {
+		"node": ">=18"
+	},
+	"node-red": {
+		"version": ">=3.0.0",
+		"nodes": {
+			"alphaess-modbus": "alphaess-modbus.js"
+		}
+	},
+	"files": [
+		"alphaess-modbus.js",
+		"alphaess-modbus.html",
+		"lib/",
+		"examples/",
+		"README.md",
+		"CHANGELOG.md",
+		"LICENSE"
+	]
+}

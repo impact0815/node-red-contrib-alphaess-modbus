@@ -1,0 +1,372 @@
+[
+  {
+    "id": "tab1",
+    "type": "tab",
+    "label": "AlphaESS Modbus",
+    "disabled": false,
+    "info": "Example for node-red-contrib-alphaess-modbus. Set the IP address in the connection config. Write commands only work when \"Allow write access\" is enabled."
+  },
+  {
+    "id": "cfg1",
+    "type": "alphaess-modbus-config",
+    "name": "AlphaESS",
+    "host": "192.168.1.100",
+    "port": 502,
+    "unitId": 85,
+    "timeout": 2000,
+    "delay": 20
+  },
+  {
+    "id": "i1",
+    "type": "inject",
+    "z": "tab1",
+    "name": "read now",
+    "props": [
+      {
+        "p": "topic",
+        "vt": "str"
+      },
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "read",
+    "payload": "",
+    "payloadType": "date",
+    "x": 190,
+    "y": 60,
+    "wires": [
+      [
+        "node1"
+      ]
+    ]
+  },
+  {
+    "id": "i2",
+    "type": "inject",
+    "z": "tab1",
+    "name": "read device info",
+    "props": [
+      {
+        "p": "topic",
+        "vt": "str"
+      },
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "readInfo",
+    "payload": "",
+    "payloadType": "date",
+    "x": 190,
+    "y": 100,
+    "wires": [
+      [
+        "node1"
+      ]
+    ]
+  },
+  {
+    "id": "i3",
+    "type": "inject",
+    "z": "tab1",
+    "name": "read raw 0x0400 x10",
+    "props": [
+      {
+        "p": "topic",
+        "vt": "str"
+      },
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "readRaw",
+    "payload": "{\"address\":1024,\"count\":10}",
+    "payloadType": "json",
+    "x": 190,
+    "y": 140,
+    "wires": [
+      [
+        "node1"
+      ]
+    ]
+  },
+  {
+    "id": "c1",
+    "type": "comment",
+    "z": "tab1",
+    "name": "Control – requires \"Allow write access\"",
+    "info": "",
+    "x": 220,
+    "y": 200,
+    "wires": []
+  },
+  {
+    "id": "i4",
+    "type": "inject",
+    "z": "tab1",
+    "name": "charge 3 kW to 90 % for 15 min",
+    "props": [
+      {
+        "p": "topic",
+        "vt": "str"
+      },
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "dispatch",
+    "payload": "{\"power\":-3000,\"soc\":90,\"duration\":900,\"mode\":2}",
+    "payloadType": "json",
+    "x": 190,
+    "y": 240,
+    "wires": [
+      [
+        "node1"
+      ]
+    ]
+  },
+  {
+    "id": "i5",
+    "type": "inject",
+    "z": "tab1",
+    "name": "discharge 2 kW for 10 min",
+    "props": [
+      {
+        "p": "topic",
+        "vt": "str"
+      },
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "dispatch",
+    "payload": "{\"power\":2000,\"soc\":20,\"duration\":600,\"mode\":2}",
+    "payloadType": "json",
+    "x": 190,
+    "y": 280,
+    "wires": [
+      [
+        "node1"
+      ]
+    ]
+  },
+  {
+    "id": "i6",
+    "type": "inject",
+    "z": "tab1",
+    "name": "stop dispatch",
+    "props": [
+      {
+        "p": "topic",
+        "vt": "str"
+      },
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "dispatchStop",
+    "payload": "",
+    "payloadType": "date",
+    "x": 190,
+    "y": 320,
+    "wires": [
+      [
+        "node1"
+      ]
+    ]
+  },
+  {
+    "id": "i7",
+    "type": "inject",
+    "z": "tab1",
+    "name": "feed-in limit 70 %",
+    "props": [
+      {
+        "p": "topic",
+        "vt": "str"
+      },
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "feedIn",
+    "payload": "70",
+    "payloadType": "num",
+    "x": 190,
+    "y": 360,
+    "wires": [
+      [
+        "node1"
+      ]
+    ]
+  },
+  {
+    "id": "i8",
+    "type": "inject",
+    "z": "tab1",
+    "name": "night charge 01:00-05:00",
+    "props": [
+      {
+        "p": "topic",
+        "vt": "str"
+      },
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "timePeriod",
+    "payload": "{\"flag\":1,\"chargeCutSoc\":90,\"charge1\":{\"start\":\"01:00\",\"stop\":\"05:00\"}}",
+    "payloadType": "json",
+    "x": 190,
+    "y": 400,
+    "wires": [
+      [
+        "node1"
+      ]
+    ]
+  },
+  {
+    "id": "node1",
+    "type": "alphaess-modbus",
+    "z": "tab1",
+    "name": "",
+    "server": "cfg1",
+    "interval": 15,
+    "slowInterval": 300,
+    "staleAfter": 180,
+    "topic": "alphaess/modbus",
+    "platform": "EMS3.x",
+    "block_grid": true,
+    "block_pvMeter": false,
+    "block_battery": true,
+    "block_inverter": true,
+    "block_systemRun": true,
+    "block_systemConfig": true,
+    "block_timePeriod": true,
+    "block_dispatch": true,
+    "block_info": true,
+    "includePvMeter": false,
+    "contextStore": "",
+    "mqttBroker": "",
+    "mqttPrefix": "alphaess",
+    "mqttQos": "0",
+    "mqttRetain": false,
+    "mqttDetails": false,
+    "allowWrite": false,
+    "maxPower": "5000",
+    "socScale": 0.1,
+    "x": 520,
+    "y": 220,
+    "wires": [
+      [
+        "dbg1",
+        "ch1"
+      ],
+      [
+        "dbg2"
+      ]
+    ]
+  },
+  {
+    "id": "dbg1",
+    "type": "debug",
+    "z": "tab1",
+    "name": "data",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "x": 750,
+    "y": 180,
+    "wires": []
+  },
+  {
+    "id": "ch1",
+    "type": "change",
+    "z": "tab1",
+    "name": "daily consumption",
+    "rules": [
+      {
+        "t": "set",
+        "p": "payload",
+        "pt": "msg",
+        "to": "payload.daily.consumption",
+        "tot": "msg"
+      }
+    ],
+    "x": 770,
+    "y": 220,
+    "wires": [
+      [
+        "dbg3"
+      ]
+    ]
+  },
+  {
+    "id": "dbg3",
+    "type": "debug",
+    "z": "tab1",
+    "name": "kWh today",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": true,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "payload",
+    "statusType": "auto",
+    "x": 970,
+    "y": 220,
+    "wires": []
+  },
+  {
+    "id": "dbg2",
+    "type": "debug",
+    "z": "tab1",
+    "name": "alarm",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "x": 750,
+    "y": 260,
+    "wires": []
+  }
+]

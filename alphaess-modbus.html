@@ -1,0 +1,234 @@
+<!-- ======================================================= config node === -->
+<script type="text/javascript">
+	RED.nodes.registerType('alphaess-modbus-config', {
+		category: 'config',
+		defaults: {
+			name: { value: '' },
+			host: { value: '', required: true },
+			port: { value: 502, required: true, validate: RED.validators.number() },
+			unitId: { value: 85, required: true, validate: RED.validators.number() },
+			timeout: { value: 2000, validate: RED.validators.number() },
+			delay: { value: 20, validate: RED.validators.number() }
+		},
+		label: function () {
+			return this.name || (this.host ? this.host + ':' + this.port : 'AlphaESS Modbus');
+		}
+	});
+</script>
+
+<script type="text/html" data-template-name="alphaess-modbus-config">
+	<div class="form-row">
+		<label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+		<input type="text" id="node-config-input-name">
+	</div>
+	<div class="form-row">
+		<label for="node-config-input-host"><i class="fa fa-server"></i> Host</label>
+		<input type="text" id="node-config-input-host" placeholder="192.168.1.100">
+	</div>
+	<div class="form-row">
+		<label for="node-config-input-port"><i class="fa fa-random"></i> Port</label>
+		<input type="text" id="node-config-input-port" style="width:80px">
+	</div>
+	<div class="form-row">
+		<label for="node-config-input-unitId"><i class="fa fa-hashtag"></i> Unit ID</label>
+		<input type="text" id="node-config-input-unitId" style="width:80px"> <span>(default 85 = 0x55)</span>
+	</div>
+	<div class="form-row">
+		<label for="node-config-input-timeout"><i class="fa fa-clock-o"></i> Timeout</label>
+		<input type="text" id="node-config-input-timeout" style="width:80px"> ms
+	</div>
+	<div class="form-row">
+		<label for="node-config-input-delay"><i class="fa fa-hourglass-half"></i> Delay</label>
+		<input type="text" id="node-config-input-delay" style="width:80px"> ms between requests
+	</div>
+</script>
+
+<script type="text/html" data-help-name="alphaess-modbus-config">
+	<p>Modbus TCP connection to an AlphaESS system (EMS). The default unit ID is 85 (0x55).</p>
+	<p>All AlphaESS Modbus nodes using this configuration share one TCP connection. Requests are processed one after another.</p>
+</script>
+
+<!-- ========================================================= main node === -->
+<script type="text/javascript">
+	RED.nodes.registerType('alphaess-modbus', {
+		category: 'Alpha ESS',
+		color: '#79A9E7',
+		defaults: {
+			name: { value: '' },
+			server: { value: '', type: 'alphaess-modbus-config', required: true },
+			interval: { value: 15, validate: RED.validators.number() },
+			slowInterval: { value: 300, validate: RED.validators.number() },
+			staleAfter: { value: 180, validate: RED.validators.number() },
+			topic: { value: 'alphaess/modbus' },
+			platform: { value: 'EMS3.x' },
+			block_grid: { value: true },
+			block_pvMeter: { value: false },
+			block_battery: { value: true },
+			block_inverter: { value: true },
+			block_systemRun: { value: true },
+			block_systemConfig: { value: true },
+			block_timePeriod: { value: true },
+			block_dispatch: { value: true },
+			block_info: { value: true },
+			includePvMeter: { value: false },
+			contextStore: { value: '' },
+			mqttBroker: { value: '', type: 'mqtt-broker', required: false },
+			mqttPrefix: { value: 'alphaess' },
+			mqttQos: { value: '0' },
+			mqttRetain: { value: false },
+			mqttDetails: { value: false },
+			allowWrite: { value: false },
+			maxPower: { value: '' },
+			socScale: { value: 0.1, validate: RED.validators.number() }
+		},
+		inputs: 1,
+		outputs: 2,
+		outputLabels: ['data', 'alarm (on change)'],
+		icon: 'font-awesome/fa-bolt',
+		label: function () { return this.name || 'AlphaESS Modbus'; },
+		paletteLabel: 'AlphaESS Modbus',
+		oneditprepare: function () {
+			var toggle = function () { $('.alphaess-write-row').toggle($('#node-input-allowWrite').is(':checked')); };
+			$('#node-input-allowWrite').on('change', toggle);
+			toggle();
+		}
+	});
+</script>
+
+<script type="text/html" data-template-name="alphaess-modbus">
+	<div class="form-row">
+		<label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+		<input type="text" id="node-input-name">
+	</div>
+	<div class="form-row">
+		<label for="node-input-server"><i class="fa fa-server"></i> Connection</label>
+		<input type="text" id="node-input-server">
+	</div>
+	<div class="form-row">
+		<label for="node-input-interval"><i class="fa fa-repeat"></i> Interval</label>
+		<input type="text" id="node-input-interval" style="width:80px"> s (0 = only on input)
+	</div>
+	<div class="form-row">
+		<label for="node-input-slowInterval"><i class="fa fa-clock-o"></i> Slow blocks</label>
+		<input type="text" id="node-input-slowInterval" style="width:80px"> s (config, time periods, dispatch)
+	</div>
+	<div class="form-row">
+		<label for="node-input-staleAfter"><i class="fa fa-hourglass-end"></i> Stale after</label>
+		<input type="text" id="node-input-staleAfter" style="width:80px"> s without successful read
+	</div>
+	<div class="form-row">
+		<label for="node-input-topic"><i class="fa fa-tasks"></i> Topic</label>
+		<input type="text" id="node-input-topic">
+	</div>
+	<div class="form-row">
+		<label for="node-input-platform"><i class="fa fa-microchip"></i> EMS</label>
+		<select id="node-input-platform">
+			<option value="EMS3.x">EMS 3.5 / 3.6</option>
+			<option value="EMS2.5">EMS 2.5</option>
+		</select>
+	</div>
+	<div class="form-row">
+		<label><i class="fa fa-list"></i> Read blocks</label>
+		<div style="display:inline-block; width:70%">
+			<label style="width:auto"><input type="checkbox" id="node-input-block_grid" style="width:auto"> Grid meter</label><br>
+			<label style="width:auto"><input type="checkbox" id="node-input-block_pvMeter" style="width:auto"> PV meter (AC coupled)</label><br>
+			<label style="width:auto"><input type="checkbox" id="node-input-block_battery" style="width:auto"> Battery</label><br>
+			<label style="width:auto"><input type="checkbox" id="node-input-block_inverter" style="width:auto"> Inverter</label><br>
+			<label style="width:auto"><input type="checkbox" id="node-input-block_systemRun" style="width:auto"> System running data / system fault</label><br>
+			<label style="width:auto"><input type="checkbox" id="node-input-block_systemConfig" style="width:auto"> System config (slow)</label><br>
+			<label style="width:auto"><input type="checkbox" id="node-input-block_timePeriod" style="width:auto"> Time period control (slow)</label><br>
+			<label style="width:auto"><input type="checkbox" id="node-input-block_dispatch" style="width:auto"> Dispatch state (slow)</label><br>
+			<label style="width:auto"><input type="checkbox" id="node-input-block_info" style="width:auto"> Device info (at start, then daily)</label>
+		</div>
+	</div>
+	<div class="form-row">
+		<label style="width:auto"><input type="checkbox" id="node-input-includePvMeter" style="width:auto"> Add PV meter to PV power / daily PV energy</label>
+	</div>
+	<div class="form-row">
+		<label for="node-input-contextStore"><i class="fa fa-database"></i> Daily store</label>
+		<input type="text" id="node-input-contextStore" style="width:120px" placeholder="default"> context store, e.g. <code>file</code>
+	</div>
+
+	<h4>MQTT</h4>
+	<div class="form-row">
+		<label for="node-input-mqttBroker"><i class="fa fa-rss"></i> Broker</label>
+		<input type="text" id="node-input-mqttBroker">
+	</div>
+	<div class="form-row">
+		<label for="node-input-mqttPrefix"><i class="fa fa-sitemap"></i> Prefix</label>
+		<input type="text" id="node-input-mqttPrefix" placeholder="alphaess">
+	</div>
+	<div class="form-row">
+		<label for="node-input-mqttQos"><i class="fa fa-empire"></i> QoS</label>
+		<select id="node-input-mqttQos" style="width:80px">
+			<option value="0">0</option>
+			<option value="1">1</option>
+			<option value="2">2</option>
+		</select>
+	</div>
+	<div class="form-row">
+		<label style="width:auto"><input type="checkbox" id="node-input-mqttRetain" style="width:auto"> Retain</label>
+		&nbsp;&nbsp;
+		<label style="width:auto"><input type="checkbox" id="node-input-mqttDetails" style="width:auto"> Publish block details as JSON</label>
+	</div>
+
+	<h4>Control</h4>
+	<div class="form-row">
+		<label style="width:auto"><input type="checkbox" id="node-input-allowWrite" style="width:auto"> <b>Allow write access</b> (dispatch, feed-in, time periods)</label>
+	</div>
+	<div class="form-row alphaess-write-row">
+		<label for="node-input-maxPower"><i class="fa fa-shield"></i> Max. power</label>
+		<input type="text" id="node-input-maxPower" style="width:100px" placeholder="e.g. 5000"> W (dispatch limit)
+	</div>
+	<div class="form-row">
+		<label for="node-input-socScale"><i class="fa fa-percent"></i> SOC scale</label>
+		<input type="text" id="node-input-socScale" style="width:80px"> %/bit for time period SOC values
+	</div>
+</script>
+
+<script type="text/html" data-help-name="alphaess-modbus">
+	<p>Reads realtime data from an AlphaESS system via Modbus TCP, derives daily energy, autarky and alarms,
+	and optionally publishes everything to MQTT. Write access (dispatch, feed-in limit, time periods) is disabled by default.</p>
+
+	<h3>Outputs</h3>
+	<ol class="node-ports">
+		<li>Data
+			<dl class="message-properties">
+				<dt>payload.consumption <span class="property-type">number</span></dt><dd>house load in W</dd>
+				<dt>payload.grid <span class="property-type">number</span></dt><dd>grid power in W (+ import / - export)</dd>
+				<dt>payload.modules <span class="property-type">number</span></dt><dd>PV power in W</dd>
+				<dt>payload.battery <span class="property-type">number</span></dt><dd>battery power in W (+ discharge / - charge)</dd>
+				<dt>payload.soc <span class="property-type">number</span></dt><dd>state of charge in %</dd>
+				<dt>payload.autarky / selfConsumptionRate <span class="property-type">number</span></dt><dd>in %</dd>
+				<dt>payload.daily / yesterday <span class="property-type">object</span></dt><dd>energy in kWh since local midnight / of the previous day</dd>
+				<dt>payload.alarms / warnings <span class="property-type">array</span></dt><dd>active faults and warnings as text</dd>
+				<dt>payload.blocks <span class="property-type">object</span></dt><dd>age, stale flag and last error per block</dd>
+				<dt>payload.details <span class="property-type">object</span></dt><dd>decoded registers per block</dd>
+				<dt class="optional">payload.info <span class="property-type">object</span></dt><dd>serial numbers and versions</dd>
+				<dt class="optional">errors <span class="property-type">object</span></dt><dd>read errors of this cycle</dd>
+			</dl>
+		</li>
+		<li>Alarm – sent only when alarms or warnings change:
+			<code>{ active, alarms, warnings, timestamp }</code></li>
+	</ol>
+
+	<h3>Input (msg.topic)</h3>
+	<dl class="message-properties">
+		<dt>read</dt><dd>read all enabled blocks now (default when no topic is set)</dd>
+		<dt>readInfo</dt><dd>re-read device information</dd>
+		<dt>readRaw</dt><dd><code>{"address": 1024, "count": 10}</code> – returns raw registers</dd>
+		<dt>dispatch</dt><dd><code>{"power": -3000, "soc": 90, "duration": 900, "mode": 2}</code> – W, negative = charge</dd>
+		<dt>dispatchStop</dt><dd>stop dispatch</dd>
+		<dt>feedIn</dt><dd>payload = max. feed-in in %</dd>
+		<dt>timePeriod</dt><dd><code>{"flag": 1, "chargeCutSoc": 90, "charge1": {"start": "01:00", "stop": "05:00"}}</code> – only given fields are changed</dd>
+	</dl>
+
+	<h3>MQTT</h3>
+	<p>If a broker is selected, the node publishes to <code>&lt;prefix&gt;/consumption</code>, <code>/grid</code>, <code>/modules</code>,
+	<code>/battery</code>, <code>/soc</code>, <code>/autarky</code>, …, <code>/daily/&lt;key&gt;</code>, <code>/status</code> (ok/alarm),
+	<code>/alarm</code> (JSON, on change), <code>/info</code> (JSON, retained) and optionally <code>/details/&lt;block&gt;</code>.</p>
+
+	<h3>Daily values</h3>
+	<p>Calculated from the lifetime counters since local midnight. Select a persistent context store (e.g. <code>file</code>)
+	to keep them across restarts.</p>
+</script>
