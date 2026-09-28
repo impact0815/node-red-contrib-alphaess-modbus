@@ -4,11 +4,13 @@ const { ModbusTcpClient } = require('./lib/modbus-tcp');
 const { BLOCKS, decodeBlock } = require('./lib/registers');
 const { computeLive, DailyTracker, collectAlarms } = require('./lib/derived');
 const { MqttPublisher } = require('./lib/mqtt');
+const { isStoreConfigured, getContextStorage } = require('./lib/context-store');
 const cmd = require('./lib/commands');
 
 const FAST_BLOCKS = ['grid', 'pvMeter', 'battery', 'inverter', 'systemRun'];
 const SLOW_BLOCKS = ['systemConfig', 'timePeriod', 'dispatch'];
-const INFO_BLOCKS = ['inverterInfo', 'systemInfo'];
+const INFO_BLOCKS = ['inverterInfo', 'systemInfo', 'batteryInfo'];
+const OPTIONAL_INFO_BLOCKS = ['batteryInfo']; // not available on every firmware
 const INFO_REFRESH_MS = 24 * 3600 * 1000;
 
 const bool = (v) => v === true || v === 'true';
@@ -16,6 +18,9 @@ const numOr = (v, d) => {
 	const n = Number(v);
 	return v === '' || v === undefined || v === null || !Number.isFinite(n) ? d : n;
 };
+const hex = (a) => '0x' + a.toString(16).padStart(4, '0');
+/** Modbus exceptions that mean "register range not supported by this firmware" */
+const isUnsupported = (err) => err && (err.code === 2 || err.code === 3);
 
 module.exports = function (RED) {
 
@@ -63,13 +68,24 @@ module.exports = function (RED) {
 		};
 		const allowWrite = bool(config.allowWrite);
 		const maxPower = config.maxPower !== undefined && config.maxPower !== '' ? Number(config.maxPower) : undefined;
+		const writeInterval = Math.max(0, numOr(config.writeInterval, 10));
 
-		const store = config.contextStore || undefined;
+		// ------------------------------------------------ daily store ----
+		const store = String(config.contextStore || '').trim() || undefined;
+		let storeWarning = null;
+		if (!isStoreConfigured(store, getContextStorage(RED))) {
+			storeWarning = `Node: context store "${store}" is not configured in settings.js – ` +
+				'daily values are not persistent and restart after every Node-RED restart';
+			node.warn(storeWarning);
+		}
 		const ctx = node.context();
 		const daily = new DailyTracker({ get: (k) => ctx.get(k, store), set: (k, v) => ctx.set(k, v, store) });
 		const mqtt = new MqttPublisher(RED, node, config);
 
 		const cache = {}; // block -> { data, ts, error, errorTs }
+		const countFor = {}; // block -> register count after fallback to the older documentation
+		const unsupported = new Set(); // optional blocks the system does not provide
+		const lastWrite = {}; // command -> timestamp of the last actual write
 		let info = null;
 		let infoTs = 0;
 		let slowTs = 0;
@@ -79,12 +95,33 @@ module.exports = function (RED) {
 		let cycle = 0;
 		let alarmKey = null;
 
-		async function readBlock(name) {
-			const b = BLOCKS[name];
-			const values = await client.readHoldingRegisters(b.start, b.count);
+		function store2cache(name, values) {
 			const data = decodeBlock(name, values, opts);
 			cache[name] = { data, ts: Date.now() };
 			return data;
+		}
+
+		/**
+		 * Reads a block. Blocks that were extended in the newer register list
+		 * (minCount) are read with the new length first; if the system rejects
+		 * the request, the node falls back to the old length permanently.
+		 */
+		async function readRaw(name) {
+			const b = BLOCKS[name];
+			const count = countFor[name] || b.count;
+			try {
+				return await client.readHoldingRegisters(b.start, count);
+			} catch (err) {
+				if (!b.minCount || count <= b.minCount || !isUnsupported(err)) throw err;
+				countFor[name] = b.minCount;
+				node.log(`${name}: extended registers not supported by this system, reading ${b.minCount} ` +
+					`instead of ${b.count} registers`);
+				return client.readHoldingRegisters(b.start, b.minCount);
+			}
+		}
+
+		async function readBlock(name) {
+			return store2cache(name, await readRaw(name));
 		}
 
 		async function readList(names, errors) {
@@ -100,10 +137,22 @@ module.exports = function (RED) {
 
 		async function refreshInfo() {
 			const errors = {};
-			await readList(INFO_BLOCKS, errors);
+			for (const name of INFO_BLOCKS) {
+				if (unsupported.has(name)) continue;
+				try {
+					await readBlock(name);
+				} catch (err) {
+					if (OPTIONAL_INFO_BLOCKS.includes(name) && isUnsupported(err)) {
+						unsupported.add(name);
+						node.log(`${name}: not supported by this system`);
+						continue;
+					}
+					errors[name] = err.message;
+					node.warn(`${name}: ${err.message}`);
+				}
+			}
 			const res = {};
 			INFO_BLOCKS.forEach((n) => { if (cache[n] && cache[n].data) res[n] = cache[n].data; });
-			Object.keys(errors).forEach((n) => node.warn(`${n}: ${errors[n]}`));
 			if (Object.keys(res).length) {
 				info = res;
 				infoTs = Date.now();
@@ -121,6 +170,7 @@ module.exports = function (RED) {
 				const age = c.ts ? Math.round((now - c.ts) / 1000) : null;
 				const s = { age, stale: age === null ? true : age > limit };
 				if (c.error && (!c.ts || c.errorTs >= c.ts)) s.error = c.error;
+				if (countFor[n]) s.registers = countFor[n];
 				res[n] = s;
 			});
 			return res;
@@ -137,8 +187,9 @@ module.exports = function (RED) {
 			if (p.grid !== undefined) parts.push(`Grid ${p.grid}W`);
 			if (p.soc !== undefined) parts.push(`SOC ${p.soc}%`);
 			if (p.consumption !== undefined) parts.push(`Load ${p.consumption}W`);
+			if (storeWarning) parts.push(`store "${store}" missing`);
 			node.status({
-				fill: p.alarms.length ? 'red' : (errs.length ? 'yellow' : 'green'),
+				fill: p.alarms.length ? 'red' : ((errs.length || storeWarning) ? 'yellow' : 'green'),
 				shape: 'dot',
 				text: parts.join(' | ') || 'ok'
 			});
@@ -166,6 +217,7 @@ module.exports = function (RED) {
 				const live = computeLive(details, opts);
 				const day = daily.update(details, now, opts);
 				const { alarms, warnings } = collectAlarms(details, blocks);
+				if (storeWarning) warnings.push(storeWarning);
 				const payload = Object.assign(live, {
 					daily: day.daily, yesterday: day.yesterday, alarms, warnings, blocks, details
 				});
@@ -190,7 +242,7 @@ module.exports = function (RED) {
 				}
 				mqtt.publishCycle(payload, alarmMsg && alarmMsg.payload);
 				setStatus(payload, errors);
-				send([msg, alarmMsg]);
+				send([msg, alarmMsg, null]);
 				return true;
 			} finally {
 				busy = false;
@@ -209,13 +261,54 @@ module.exports = function (RED) {
 			}, delay);
 		}
 
-		async function write(frame, readBack, send, msg) {
+		// ------------------------------------------------------ commands ----
+		function requireWrite() {
 			if (!allowWrite) throw new Error('Writing is disabled – enable "Allow write access" in the node settings');
-			await client.writeRegisters(frame.address, frame.values);
+		}
+
+		/** minimum interval between two actual writes of the same command */
+		function checkRate(command) {
+			if (!writeInterval || !lastWrite[command]) return;
+			const wait = writeInterval * 1000 - (Date.now() - lastWrite[command]);
+			if (wait > 0) {
+				throw new Error(`${command}: write blocked, next write possible in ${Math.ceil(wait / 1000)} s ` +
+					`(min. interval ${writeInterval} s)`);
+			}
+		}
+
+		async function writeFrames(command, frames) {
+			for (const f of frames) await client.writeRegisters(f.address, f.values);
+			lastWrite[command] = Date.now();
+			return frames.map((f) => ({ address: hex(f.address), values: f.values }));
+		}
+
+		function reply(send, msg, payload, extra) {
 			const out = RED.util.cloneMessage(msg);
-			out.written = { address: '0x' + frame.address.toString(16).padStart(4, '0'), values: frame.values };
-			out.payload = await readBlock(readBack);
-			send([out, null]);
+			out.payload = payload;
+			Object.assign(out, extra);
+			send([null, null, out]);
+		}
+
+		/**
+		 * read-modify-write of a setting block: writes only changed registers,
+		 * nothing at all if the values are unchanged.
+		 */
+		async function writeSetting(command, block, build, send, msg) {
+			const b = BLOCKS[block];
+			const current = await client.readHoldingRegisters(b.start, b.count);
+			const next = build(current);
+			const frames = cmd.diffFrames(b.start, current, next);
+			if (!frames.length) {
+				const data = store2cache(block, current);
+				reply(send, msg, data, { unchanged: true, written: [] });
+				node.status({ fill: 'blue', shape: 'ring', text: `${command}: unchanged` });
+				return;
+			}
+			checkRate(command);
+			const written = await writeFrames(command, frames);
+			const data = await readBlock(block);
+			reply(send, msg, data, { unchanged: false, written });
+			node.status({ fill: 'blue', shape: 'dot', text: `${command}: ${frames.reduce((s, f) => s + f.values.length, 0)} register(s) written` });
 		}
 
 		node.on('input', async (msg, send, done) => {
@@ -230,40 +323,49 @@ module.exports = function (RED) {
 						break;
 					case 'readInfo': {
 						const errors = await refreshInfo();
-						const out = RED.util.cloneMessage(msg);
-						out.payload = info;
-						if (Object.keys(errors).length) out.errors = errors;
-						send([out, null]);
+						reply(send, msg, info, Object.keys(errors).length ? { errors } : {});
 						break;
 					}
 					case 'readRaw': {
 						const a = Number(msg.payload && msg.payload.address);
 						const c = Number(msg.payload && msg.payload.count) || 1;
 						if (!Number.isInteger(a) || a < 0 || a > 0xFFFF) throw new RangeError('payload.address must be 0..65535');
-						const out = RED.util.cloneMessage(msg);
-						out.payload = await client.readHoldingRegisters(a, c);
-						send([out, null]);
+						reply(send, msg, await client.readHoldingRegisters(a, c));
 						break;
 					}
-					case 'dispatch':
-						await write(cmd.encodeDispatch(Object.assign({ maxPower }, msg.payload)), 'dispatch', send, msg);
+					case 'dispatch': {
+						requireWrite();
+						const frame = cmd.encodeDispatch(Object.assign({ maxPower }, msg.payload));
+						checkRate('dispatch');
+						const written = await writeFrames('dispatch', [frame]);
+						reply(send, msg, await readBlock('dispatch'), { written });
 						node.status({ fill: 'blue', shape: 'dot', text: `dispatch ${msg.payload.power}W` });
 						break;
-					case 'dispatchStop':
-						await write(cmd.encodeDispatchStop(), 'dispatch', send, msg);
+					}
+					case 'dispatchStop': {
+						// never rate limited: stopping must always be possible
+						requireWrite();
+						const written = await writeFrames('dispatchStop', [cmd.encodeDispatchStop()]);
+						reply(send, msg, await readBlock('dispatch'), { written });
 						node.status({ fill: 'blue', shape: 'ring', text: 'dispatch stopped' });
 						break;
+					}
 					case 'feedIn': {
+						requireWrite();
 						const p = msg.payload !== null && typeof msg.payload === 'object' ? msg.payload.percent : msg.payload;
-						await write(cmd.encodeFeedIn(p), 'systemConfig', send, msg);
+						const frame = cmd.encodeFeedIn(p);
+						await writeSetting('feedIn', 'systemConfig', (current) => {
+							const next = current.slice();
+							next[frame.address - BLOCKS.systemConfig.start] = frame.values[0];
+							return next;
+						}, send, msg);
 						break;
 					}
-					case 'timePeriod': {
-						const b = BLOCKS.timePeriod;
-						const current = await client.readHoldingRegisters(b.start, b.count);
-						await write(cmd.encodeTimePeriod(current, msg.payload, opts.socScale), 'timePeriod', send, msg);
+					case 'timePeriod':
+						requireWrite();
+						await writeSetting('timePeriod', 'timePeriod',
+							(current) => cmd.encodeTimePeriod(current, msg.payload, opts.socScale).values, send, msg);
 						break;
-					}
 					default:
 						throw new Error(`Unknown topic "${t}"`);
 				}
@@ -280,7 +382,9 @@ module.exports = function (RED) {
 			mqtt.close(done);
 		});
 
-		node.status({ fill: 'grey', shape: 'ring', text: interval ? `polling every ${interval}s` : 'manual mode' });
+		node.status(storeWarning
+			? { fill: 'yellow', shape: 'ring', text: `context store "${store}" missing in settings.js` }
+			: { fill: 'grey', shape: 'ring', text: interval ? `polling every ${interval}s` : 'manual mode' });
 		schedule(1000);
 	}
 	RED.nodes.registerType('alphaess-modbus', AlphaEssModbusNode);

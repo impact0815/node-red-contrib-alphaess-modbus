@@ -1,6 +1,6 @@
 {
 	"name": "node-red-contrib-alphaess-modbus",
-	"version": "0.1.0",
+	"version": "0.3.0",
 	"description": "Local Modbus TCP access to Alpha ESS storage systems for Node-RED: realtime data, daily energy, alarms, MQTT and optional control.",
 	"main": "alphaess-modbus.js",
 	"scripts": {

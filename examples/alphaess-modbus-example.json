@@ -259,6 +259,35 @@
     ]
   },
   {
+    "id": "i9",
+    "type": "inject",
+    "z": "tab1",
+    "name": "UPS reserve 20 %",
+    "props": [
+      {
+        "p": "topic",
+        "vt": "str"
+      },
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "timePeriod",
+    "payload": "{\"upsReserveSoc\":20}",
+    "payloadType": "json",
+    "x": 190,
+    "y": 440,
+    "wires": [
+      [
+        "node1"
+      ]
+    ]
+  },
+  {
     "id": "node1",
     "type": "alphaess-modbus",
     "z": "tab1",
@@ -287,9 +316,10 @@
     "mqttDetails": false,
     "allowWrite": false,
     "maxPower": "5000",
+    "writeInterval": 10,
     "socScale": 0.1,
     "x": 520,
-    "y": 220,
+    "y": 240,
     "wires": [
       [
         "dbg1",
@@ -297,6 +327,9 @@
       ],
       [
         "dbg2"
+      ],
+      [
+        "dbg4"
       ]
     ]
   },
@@ -367,6 +400,21 @@
     "targetType": "msg",
     "x": 750,
     "y": 260,
+    "wires": []
+  },
+  {
+    "id": "dbg4",
+    "type": "debug",
+    "z": "tab1",
+    "name": "command response",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "true",
+    "targetType": "full",
+    "x": 770,
+    "y": 300,
     "wires": []
   }
 ]
