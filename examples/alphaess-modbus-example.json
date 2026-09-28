@@ -78,7 +78,7 @@
     "id": "i3",
     "type": "inject",
     "z": "tab1",
-    "name": "read raw 0x0400 x10",
+    "name": "read raw 0x0850 (SOC scale check)",
     "props": [
       {
         "p": "topic",
@@ -93,7 +93,7 @@
     "once": false,
     "onceDelay": 0.1,
     "topic": "readRaw",
-    "payload": "{\"address\":1024,\"count\":10}",
+    "payload": "{\"address\":2128,\"count\":1}",
     "payloadType": "json",
     "x": 190,
     "y": 140,

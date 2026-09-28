@@ -167,8 +167,9 @@ module.exports = function (RED) {
 				const c = cache[n];
 				if (!c) return;
 				const limit = SLOW_BLOCKS.includes(n) ? Math.max(staleAfter, 2 * slowInterval + interval) : staleAfter;
-				const age = c.ts ? Math.round((now - c.ts) / 1000) : null;
-				const s = { age, stale: age === null ? true : age > limit };
+				// compare the exact age in ms; the rounded seconds are only for display
+				const ageMs = c.ts ? now - c.ts : null;
+				const s = { age: ageMs === null ? null : Math.round(ageMs / 1000), stale: ageMs === null ? true : ageMs > limit * 1000 };
 				if (c.error && (!c.ts || c.errorTs >= c.ts)) s.error = c.error;
 				if (countFor[n]) s.registers = countFor[n];
 				res[n] = s;

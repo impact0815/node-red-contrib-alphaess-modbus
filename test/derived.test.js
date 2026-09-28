@@ -50,12 +50,10 @@ test('daily values, midnight rollover and counter reset', () => {
 	assert.strictEqual(r.daily.consumption, 1.3);
 	assert.strictEqual(r.daily.selfConsumptionRate, 75);
 
-	// restart: new tracker, same store
 	const t2 = new DailyTracker(store);
 	r = t2.update(details(regs), day1 + 90000);
 	assert.strictEqual(r.daily.pv, 2);
 
-	// counter reset during the day keeps today's value
 	u32(regs, 0x043E, 10);
 	r = t2.update(details(regs), day1 + 100000);
 	assert.strictEqual(r.daily.pv, 2);
@@ -63,7 +61,6 @@ test('daily values, midnight rollover and counter reset', () => {
 	r = t2.update(details(regs), day1 + 110000);
 	assert.strictEqual(r.daily.pv, 2.5);
 
-	// next day (00:03) -> complete
 	r = t2.update(details(regs), day1 + 5 * 60000);
 	assert.strictEqual(r.daily.day, '2026-09-28');
 	assert.strictEqual(r.daily.pv, 0);
@@ -72,7 +69,6 @@ test('daily values, midnight rollover and counter reset', () => {
 	assert.strictEqual(r.yesterday.pv, 2.5);
 	assert.strictEqual(r.yesterday.complete, false);
 
-	// missing blocks: last value of today is returned
 	r = t2.update({}, day1 + 6 * 60000);
 	assert.strictEqual(r.daily.day, '2026-09-28');
 });
@@ -93,7 +89,6 @@ test('daily.complete: restart during the day with and without persistent store',
 	assert.strictEqual(r.daily.complete, false);
 	assert.strictEqual(r.daily.pv, 0);
 
-	// base stored by 0.2.0 (without "complete") is migrated
 	const old = memStore();
 	old.set('dayBase', { day: '2026-09-28', since: midnight, counters: { pv: 9876.5, gridFeed: 0, gridImport: 0,
 		batteryCharge: 0, batteryDischarge: 0, batteryChargeFromGrid: 0 } });

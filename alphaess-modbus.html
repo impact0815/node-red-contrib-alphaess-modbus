@@ -87,7 +87,8 @@
 		<dd>Wrong IP address, system not reachable (network, firewall, Docker network) or a slow connection.
 			Test from the Node-RED host: <code>nc -zv &lt;ip&gt; 502</code>.</dd>
 		<dt><code>Modbus exception 2 (Illegal data address)</code></dt>
-		<dd>The system does not support a register block. Disable that block in the node (e.g. <i>PV meter</i> on systems without PV meter).</dd>
+		<dd>The system does not support a register block. Disable that block in the node (e.g. <i>PV meter</i> on systems without PV meter).
+			Blocks that were extended in the newer register list fall back to the older length automatically.</dd>
 	</dl>
 </script>
 
@@ -353,7 +354,8 @@
 				<li><code>soc</code>: target SOC in %, default 100 when charging, 10 when discharging</li>
 				<li><code>duration</code> in s, default 300 – after this time the system returns to normal operation by itself.
 					Keep it short and repeat the command if needed; a crashed flow then cannot leave the system in dispatch mode.</li>
-				<li><code>mode</code>: default 2 = <i>State of Charge control</i></li>
+				<li><code>mode</code>: default 2 = <i>State of Charge control</i>. Allowed: 1–10 and 19 (<i>No Battery Charge</i>);
+					test and off-grid modes are rejected.</li>
 			</ul></dd>
 		<dt><code>dispatchStop</code></dt>
 		<dd>Ends a dispatch immediately. Never blocked by <i>Min. interval</i>.</dd>
@@ -379,10 +381,11 @@
 				<dt>payload.yesterday <span class="property-type">object</span></dt><dd>the daily values of the previous day</dd>
 				<dt>payload.alarms / warnings <span class="property-type">array</span></dt><dd>active faults and warnings as text</dd>
 				<dt>payload.blocks <span class="property-type">object</span></dt>
-				<dd>per block: <code>age</code> in s since the last successful read, <code>stale</code>, last <code>error</code></dd>
+				<dd>per block: <code>age</code> in s since the last successful read, <code>stale</code>, last <code>error</code>,
+					and <code>registers</code> if the block fell back to the older register length</dd>
 				<dt>payload.details <span class="property-type">object</span></dt>
 				<dd>all decoded registers per block (<code>grid</code>, <code>battery</code>, <code>inverter</code>, …)</dd>
-				<dt class="optional">payload.info <span class="property-type">object</span></dt><dd>serial numbers and firmware versions</dd>
+				<dt class="optional">payload.info <span class="property-type">object</span></dt><dd>serial numbers (inverter, EMS, WiFi, battery modules) and firmware versions</dd>
 				<dt class="optional">errors <span class="property-type">object</span></dt><dd>read errors of this cycle per block</dd>
 			</dl>
 			<p><code>consumption = modules + grid + battery</code>. The keys <code>consumption</code>, <code>grid</code>, <code>modules</code>,
@@ -511,12 +514,13 @@ return { payload: msg.payload.consumption };</pre>
 	<ul>
 		<li>After installing a new version, restart Node-RED and reload the editor (F5); otherwise new outputs and settings are not shown.</li>
 		<li>Safety test, reset, CT calibration, network/Modbus settings and battery MOS control are intentionally not writable.</li>
-		<li>Register addresses and scaling: <i>AlphaESS Register Parameter List V1.1</i>.</li>
+		<li>Register addresses and scaling: <i>AlphaESS Household Modbus Register Parameter List</i>. Older firmware that only knows
+			the register list V1.1 is detected automatically.</li>
 	</ul>
 
 	<h3>References</h3>
 	<ul>
-		<li>README with all fields and register blocks: see the package on GitHub / npm</li>
+		<li><a href="https://github.com/impact0815/node-red-contrib-alphaess-modbus#readme">README with all fields and register blocks</a></li>
 		<li><a href="https://nodered.org/docs/user-guide/context#context-stores">Node-RED: context stores</a></li>
 	</ul>
 </script>

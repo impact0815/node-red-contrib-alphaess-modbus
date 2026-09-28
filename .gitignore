@@ -1,3 +1,9 @@
 node_modules/
 *.log
+*.tgz
+
+# Windows / macOS metadata
+*Zone.Identifier
+Thumbs.db
+desktop.ini
 .DS_Store

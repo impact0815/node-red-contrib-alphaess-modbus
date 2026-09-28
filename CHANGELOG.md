@@ -20,6 +20,7 @@ Based on the newer *AlphaESS Household Modbus Register Parameter List*.
   older register list V1.1 if the system rejects the request; `payload.blocks.<block>.registers` shows the reduced length
 - Non-printable characters are removed from ASCII values (serial numbers, versions)
 - Simulator: option `--legacy` simulates a firmware with the older register list
+- Repository links point to github.com/impact0815; CONTRIBUTING refers to the newer register list
 
 ## 0.2.3
 

@@ -203,7 +203,7 @@ contextStorage: {
 },
 ```
 
-If the entered store does not exist, Node-RED silently uses the default store instead. The node detects this,
+If the selected store does not exist, Node-RED silently uses the default store instead. The node detects this,
 logs a warning at start, shows a yellow status and adds a warning to `payload.warnings`.
 
 ## MQTT
@@ -379,6 +379,7 @@ node test/mock-server.js 5020 --legacy    # simulator of an older firmware (regi
 ```
 
 For a manual test without a real system, start the simulator and set the connection to `127.0.0.1:5020`.
+Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md). Issues: https://github.com/impact0815/node-red-contrib-alphaess-modbus/issues
 
 ## License
 

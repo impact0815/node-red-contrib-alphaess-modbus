@@ -28,11 +28,9 @@ test('grid meter: signed values, scaling, per-phase energy', () => {
 	assert.strictEqual(g.powerFactor[0], -0.98);
 	assert.deepStrictEqual(g.energyConsumeFromGridPhase, [2000, 2300, 2243.21]);
 	assert.deepStrictEqual(g.energyFeedToGridPhase, [410, 420, 404.56]);
-	// older firmware: 39 registers, no per-phase energy
 	const legacy = decodeBlock('grid', block('grid', true));
 	assert.strictEqual(legacy.totalActivePower, -720);
 	assert.strictEqual(legacy.energyConsumeFromGridPhase, undefined);
-	// PV meter has the same layout, but no per-phase energy
 	assert.strictEqual(decodeBlock('pvMeter', block('pvMeter')).energyFeedToGridPhase, undefined);
 });
 

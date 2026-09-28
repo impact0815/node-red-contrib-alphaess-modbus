@@ -50,26 +50,51 @@ function input(node, msg) {
 	});
 }
 const close = (node) => new Promise((r) => node.emit('close', r));
-const listen = (server) => new Promise((r) => server.listen(0, () => r(server.address().port)));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Registers nodes and servers of a test for cleanup. Cleanup also runs when an
+ * assertion fails, so a failing test never leaves open sockets or timers behind
+ * (which would keep the test run from ending).
+ */
+function resources(t) {
+	const items = [];
+	t.after(async () => {
+		for (const item of items.reverse()) {
+			if (item.server) {
+				if (item.server.listening) item.server.close();
+			} else {
+				await close(item.node);
+			}
+		}
+	});
+	return {
+		node(n) { items.push({ node: n }); return n; },
+		async server(s) {
+			items.push({ server: s });
+			await new Promise((r) => s.listen(0, '127.0.0.1', r));
+			return s.address().port;
+		}
+	};
+}
 
 const ALL = {
 	block_grid: true, block_battery: true, block_inverter: true, block_systemRun: true,
 	block_systemConfig: true, block_timePeriod: true, block_dispatch: true, block_info: true
 };
 
-test('read cycle, slow blocks, alarm output, MQTT', async () => {
+test('read cycle, slow blocks, alarm output, MQTT', async (t) => {
+	const res = resources(t);
 	const requests = [];
 	const opts = { onRequest: (r) => requests.push(r) };
-	const server = createServer(createRegisters(), opts);
-	const port = await listen(server);
+	const port = await res.server(createServer(createRegisters(), opts));
 	const { RED, types, nodes } = fakeRED();
 	require('../alphaess-modbus.js')(RED);
 	const broker = fakeBroker(nodes, 'mq');
-	const cfg = new types['alphaess-modbus-config']({ id: 'c1', host: '127.0.0.1', port, timeout: 1000, delay: 0 });
-	const n = new types['alphaess-modbus'](Object.assign({
+	res.node(new types['alphaess-modbus-config']({ id: 'c1', host: '127.0.0.1', port, timeout: 1000, delay: 0 }));
+	const n = res.node(new types['alphaess-modbus'](Object.assign({
 		id: 'n1', server: 'c1', interval: 0, slowInterval: 300, staleAfter: 1, mqttBroker: 'mq', mqttPrefix: 'pv/'
-	}, ALL));
+	}, ALL)));
 	assert.ok(broker.users['n1:mqtt'], 'registered at broker');
 	assert.deepStrictEqual(n.warnings, [], 'no store warning with default store');
 
@@ -99,26 +124,26 @@ test('read cycle, slow blocks, alarm output, MQTT', async () => {
 
 	const topics = broker.published.map((m) => m.topic);
 	['pv/consumption', 'pv/soc', 'pv/autarky', 'pv/daily/pv', 'pv/daily/complete', 'pv/status', 'pv/alarm', 'pv/info']
-		.forEach((t) => assert.ok(topics.includes(t), t));
+		.forEach((tp) => assert.ok(topics.includes(tp), tp));
 	assert.ok(!topics.includes('pv/daily/since') && !topics.includes('pv/daily/day'));
-	assert.ok(!topics.some((t) => t.startsWith('pv/details/')), 'details off by default');
+	assert.ok(!topics.some((tp) => tp.startsWith('pv/details/')), 'details off by default');
 	assert.strictEqual(broker.published.find((m) => m.topic === 'pv/consumption').payload, '980');
 	assert.strictEqual(broker.published.find((m) => m.topic === 'pv/info').retain, true);
 
 	// manual read forces slow blocks
 	requests.length = 0;
 	broker.published.length = 0;
-	n.emit('input', { topic: 'read' }, () => {}, () => {});
-	await sleep(300);
+	r = await input(n, { topic: 'read' });
+	assert.ifError(r.err);
 	assert.ok(requests.some((q) => q.addr === 0x0800), 'manual read forces slow blocks');
 
-	// inverter fails completely -> after staleAfter an alarm is raised once
+	// inverter fails -> after "stale after" (1 s) an alarm is raised once
 	opts.failAddress = 0x0400;
 	await sleep(1100);
 	r = await input(n, {});
 	[data, alarm] = r.out[0];
 	assert.match(data.errors.inverter, /exception 2/);
-	assert.strictEqual(data.payload.blocks.inverter.stale, true);
+	assert.strictEqual(data.payload.blocks.inverter.stale, true, 'stale after more than 1 s (exact age, not rounded)');
 	assert.strictEqual(data.payload.details.inverter, undefined);
 	assert.strictEqual(data.payload.consumption, undefined);
 	assert.ok(alarm.payload.alarms[0].startsWith('Stale data: inverter'));
@@ -134,18 +159,37 @@ test('read cycle, slow blocks, alarm output, MQTT', async () => {
 
 	await close(n);
 	assert.ok(broker.deregistered);
-	await close(cfg);
-	server.close();
 });
 
-test('older firmware: automatic fallback to the register lengths of V1.1', async () => {
-	const requests = [];
-	const server = createServer(createRegisters(), { unsupported: NEW_RANGES, onRequest: (q) => requests.push(q) });
-	const port = await listen(server);
+test('a single failed read is bridged with the last value', async (t) => {
+	const res = resources(t);
+	const opts = {};
+	const port = await res.server(createServer(createRegisters(), opts));
 	const { RED, types } = fakeRED();
 	require('../alphaess-modbus.js')(RED);
-	const cfg = new types['alphaess-modbus-config']({ id: 'c', host: '127.0.0.1', port, delay: 0 });
-	const n = new types['alphaess-modbus'](Object.assign({ id: 'legacy', server: 'c', interval: 0 }, ALL));
+	res.node(new types['alphaess-modbus-config']({ id: 'c', host: '127.0.0.1', port, delay: 0 }));
+	const n = res.node(new types['alphaess-modbus']({ id: 'b', server: 'c', interval: 0, staleAfter: 60,
+		block_grid: true, block_battery: true, block_inverter: true }));
+
+	let r = await input(n, {});
+	assert.strictEqual(r.out[0][0].payload.consumption, 980);
+	opts.failAddress = 0x0400;
+	r = await input(n, {});
+	const [data, alarm] = r.out[0];
+	assert.match(data.errors.inverter, /exception 2/);
+	assert.strictEqual(data.payload.blocks.inverter.stale, false);
+	assert.strictEqual(data.payload.consumption, 980, 'last inverter value still used');
+	assert.strictEqual(alarm, null, 'no alarm for a single failed read');
+});
+
+test('older firmware: automatic fallback to the register lengths of V1.1', async (t) => {
+	const res = resources(t);
+	const requests = [];
+	const port = await res.server(createServer(createRegisters(), { unsupported: NEW_RANGES, onRequest: (q) => requests.push(q) }));
+	const { RED, types } = fakeRED();
+	require('../alphaess-modbus.js')(RED);
+	res.node(new types['alphaess-modbus-config']({ id: 'c', host: '127.0.0.1', port, delay: 0 }));
+	const n = res.node(new types['alphaess-modbus'](Object.assign({ id: 'legacy', server: 'c', interval: 0 }, ALL)));
 
 	let r = await input(n, {});
 	assert.ifError(r.err);
@@ -177,21 +221,18 @@ test('older firmware: automatic fallback to the register lengths of V1.1', async
 	assert.ifError(r.err);
 	assert.ok(!requests.some((q) => q.addr === 0x0150));
 	assert.strictEqual(r.out[0][2].errors, undefined);
-
-	await close(n); await close(cfg);
-	server.close();
 });
 
-test('write commands: output 3, unchanged detection, only changed registers, rate limit', async () => {
+test('write commands: output 3, unchanged detection, only changed registers, rate limit', async (t) => {
+	const res = resources(t);
 	const requests = [];
 	const regs = createRegisters();
-	const server = createServer(regs, { onRequest: (q) => requests.push(q) });
-	const port = await listen(server);
+	const port = await res.server(createServer(regs, { onRequest: (q) => requests.push(q) }));
 	const { RED, types } = fakeRED();
 	require('../alphaess-modbus.js')(RED);
-	const cfg = new types['alphaess-modbus-config']({ id: 'c', host: '127.0.0.1', port, delay: 0 });
-	const ro = new types['alphaess-modbus']({ id: 'ro', server: 'c', interval: 0, block_battery: true });
-	const rw = new types['alphaess-modbus']({ id: 'rw', server: 'c', interval: 0, allowWrite: true, maxPower: 5000, writeInterval: 1 });
+	res.node(new types['alphaess-modbus-config']({ id: 'c', host: '127.0.0.1', port, delay: 0 }));
+	const ro = res.node(new types['alphaess-modbus']({ id: 'ro', server: 'c', interval: 0, block_battery: true }));
+	const rw = res.node(new types['alphaess-modbus']({ id: 'rw', server: 'c', interval: 0, allowWrite: true, maxPower: 5000, writeInterval: 1 }));
 	const writes = () => requests.filter((q) => q.fc === 16).map((q) => [q.addr, q.qty]);
 	const resp = (r) => { assert.ifError(r.err); assert.strictEqual(r.out[0][0], null); assert.strictEqual(r.out[0][1], null); return r.out[0][2]; };
 
@@ -262,47 +303,50 @@ test('write commands: output 3, unchanged detection, only changed registers, rat
 	assert.strictEqual(m.payload.systemInfo.emsSerialNumber, 'AL9002012345678');
 	r = await input(rw, { topic: 'unknown' });
 	assert.match(String(r.err), /Unknown topic/);
-
-	for (const x of [ro, rw, cfg]) await close(x);
-	server.close();
 });
 
-test('rate limit can be disabled', async () => {
-	const server = createServer(createRegisters());
-	const port = await listen(server);
+test('rate limit can be disabled', async (t) => {
+	const res = resources(t);
+	const port = await res.server(createServer(createRegisters()));
 	const { RED, types } = fakeRED();
 	require('../alphaess-modbus.js')(RED);
-	const cfg = new types['alphaess-modbus-config']({ id: 'c', host: '127.0.0.1', port, delay: 0 });
-	const rw = new types['alphaess-modbus']({ id: 'rw', server: 'c', interval: 0, allowWrite: true, writeInterval: 0 });
+	res.node(new types['alphaess-modbus-config']({ id: 'c', host: '127.0.0.1', port, delay: 0 }));
+	const rw = res.node(new types['alphaess-modbus']({ id: 'rw', server: 'c', interval: 0, allowWrite: true, writeInterval: 0 }));
 	for (const soc of [20, 30, 40]) {
 		const r = await input(rw, { topic: 'timePeriod', payload: { upsReserveSoc: soc } });
 		assert.ifError(r.err);
 		assert.strictEqual(r.out[0][2].payload.upsReserveSoc, soc);
 	}
-	await close(rw); await close(cfg);
-	server.close();
 });
 
-test('unreachable host and polling mode', async () => {
+test('unreachable host', async (t) => {
+	const res = resources(t);
+	// a port that was just released is closed; this avoids relying on a fixed port number
+	const probe = createServer(createRegisters());
+	await new Promise((r) => probe.listen(0, '127.0.0.1', r));
+	const port = probe.address().port;
+	await new Promise((r) => probe.close(r));
+
 	const { RED, types } = fakeRED();
 	require('../alphaess-modbus.js')(RED);
-	const bad = new types['alphaess-modbus-config']({ id: 'bad', host: '127.0.0.1', port: 1, timeout: 500 });
-	const n = new types['alphaess-modbus']({ id: 'x', server: 'bad', interval: 0, block_grid: true });
+	res.node(new types['alphaess-modbus-config']({ id: 'bad', host: '127.0.0.1', port, timeout: 3000 }));
+	const n = res.node(new types['alphaess-modbus']({ id: 'x', server: 'bad', interval: 0, block_grid: true }));
 	const r = await input(n, {});
-	assert.ok(r.out[0][0].errors.grid);
+	assert.ok(r.out[0][0].errors.grid, 'read error reported');
 	assert.strictEqual(n.statuses.slice(-1)[0].fill, 'red');
-	await close(n); await close(bad);
+});
 
+test('polling mode', async (t) => {
+	const res = resources(t);
 	const requests = [];
-	const server = createServer(createRegisters(), { onRequest: (q) => requests.push(q) });
-	const port = await listen(server);
-	const cfg = new types['alphaess-modbus-config']({ id: 'p', host: '127.0.0.1', port, delay: 0 });
-	const poller = new types['alphaess-modbus']({ id: 'poll', server: 'p', interval: 1, slowInterval: 300,
-		block_battery: true, block_systemConfig: true });
+	const port = await res.server(createServer(createRegisters(), { onRequest: (q) => requests.push(q) }));
+	const { RED, types } = fakeRED();
+	require('../alphaess-modbus.js')(RED);
+	res.node(new types['alphaess-modbus-config']({ id: 'p', host: '127.0.0.1', port, delay: 0 }));
+	const poller = res.node(new types['alphaess-modbus']({ id: 'poll', server: 'p', interval: 1, slowInterval: 300,
+		block_battery: true, block_systemConfig: true }));
 	await sleep(2300);
 	assert.ok(poller.sent.length >= 2, `sent ${poller.sent.length}`);
 	assert.strictEqual(requests.filter((q) => q.addr === 0x0800).length, 1, 'slow block read only once');
 	assert.strictEqual(poller.sent[1][0].payload.details.systemConfig.maxFeedIntoGridPercent, 70, 'slow block cached');
-	await close(poller); await close(cfg);
-	server.close();
 });
