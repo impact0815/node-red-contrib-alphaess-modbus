@@ -5,6 +5,7 @@ const { BLOCKS, decodeBlock } = require('./lib/registers');
 const { computeLive, DailyTracker, collectAlarms } = require('./lib/derived');
 const { MqttPublisher } = require('./lib/mqtt');
 const { isStoreConfigured, getContextStorage } = require('./lib/context-store');
+const { createTranslator } = require('./lib/i18n');
 const cmd = require('./lib/commands');
 
 const FAST_BLOCKS = ['grid', 'pvMeter', 'battery', 'inverter', 'systemRun'];
@@ -23,6 +24,12 @@ const hex = (a) => '0x' + a.toString(16).padStart(4, '0');
 const isUnsupported = (err) => err && (err.code === 2 || err.code === 3);
 
 module.exports = function (RED) {
+	/**
+	 * Translation of status texts, log messages and errors (language of the Node-RED server).
+	 * Data in msg.payload (alarm/warning texts, field names) is never translated, so flows do not
+	 * depend on the language setting.
+	 */
+	const t = createTranslator(RED);
 
 	// ------------------------------------------------------------ config ----
 	function AlphaEssModbusConfigNode(config) {
@@ -48,7 +55,7 @@ module.exports = function (RED) {
 		const node = this;
 		const server = RED.nodes.getNode(config.server);
 		if (!server) {
-			node.status({ fill: 'red', shape: 'ring', text: 'no connection configured' });
+			node.status({ fill: 'red', shape: 'ring', text: t('alphaess-modbus.status.noConnection') });
 			return;
 		}
 		const client = server.client;
@@ -69,13 +76,13 @@ module.exports = function (RED) {
 		const allowWrite = bool(config.allowWrite);
 		const maxPower = config.maxPower !== undefined && config.maxPower !== '' ? Number(config.maxPower) : undefined;
 		const writeInterval = Math.max(0, numOr(config.writeInterval, 10));
+		if (allowWrite) node.log(t('alphaess-modbus.warn.writeEnabled'));
 
 		// ------------------------------------------------ daily store ----
 		const store = String(config.contextStore || '').trim() || undefined;
 		let storeWarning = null;
 		if (!isStoreConfigured(store, getContextStorage(RED))) {
-			storeWarning = `Node: context store "${store}" is not configured in settings.js – ` +
-				'daily values are not persistent and restart after every Node-RED restart';
+			storeWarning = t('alphaess-modbus.warn.storeMissing', { store });
 			node.warn(storeWarning);
 		}
 		const ctx = node.context();
@@ -114,8 +121,7 @@ module.exports = function (RED) {
 			} catch (err) {
 				if (!b.minCount || count <= b.minCount || !isUnsupported(err)) throw err;
 				countFor[name] = b.minCount;
-				node.log(`${name}: extended registers not supported by this system, reading ${b.minCount} ` +
-					`instead of ${b.count} registers`);
+				node.log(t('alphaess-modbus.log.fallback', { block: name, min: b.minCount, count: b.count }));
 				return client.readHoldingRegisters(b.start, b.minCount);
 			}
 		}
@@ -144,7 +150,7 @@ module.exports = function (RED) {
 				} catch (err) {
 					if (OPTIONAL_INFO_BLOCKS.includes(name) && isUnsupported(err)) {
 						unsupported.add(name);
-						node.log(`${name}: not supported by this system`);
+						node.log(t('alphaess-modbus.log.unsupported', { block: name }));
 						continue;
 					}
 					errors[name] = err.message;
@@ -184,15 +190,15 @@ module.exports = function (RED) {
 				return;
 			}
 			const parts = [];
-			if (p.modules !== undefined) parts.push(`PV ${p.modules}W`);
-			if (p.grid !== undefined) parts.push(`Grid ${p.grid}W`);
-			if (p.soc !== undefined) parts.push(`SOC ${p.soc}%`);
-			if (p.consumption !== undefined) parts.push(`Load ${p.consumption}W`);
-			if (storeWarning) parts.push(`store "${store}" missing`);
+			if (p.modules !== undefined) parts.push(t('alphaess-modbus.status.pv', { value: p.modules }));
+			if (p.grid !== undefined) parts.push(t('alphaess-modbus.status.grid', { value: p.grid }));
+			if (p.soc !== undefined) parts.push(t('alphaess-modbus.status.soc', { value: p.soc }));
+			if (p.consumption !== undefined) parts.push(t('alphaess-modbus.status.load', { value: p.consumption }));
+			if (storeWarning) parts.push(t('alphaess-modbus.status.storeMissingShort', { store }));
 			node.status({
 				fill: p.alarms.length ? 'red' : ((errs.length || storeWarning) ? 'yellow' : 'green'),
 				shape: 'dot',
-				text: parts.join(' | ') || 'ok'
+				text: parts.join(' | ') || t('alphaess-modbus.status.ok')
 			});
 		}
 
@@ -264,7 +270,7 @@ module.exports = function (RED) {
 
 		// ------------------------------------------------------ commands ----
 		function requireWrite() {
-			if (!allowWrite) throw new Error('Writing is disabled – enable "Allow write access" in the node settings');
+			if (!allowWrite) throw new Error(t('alphaess-modbus.errors.writeDisabled'));
 		}
 
 		/** minimum interval between two actual writes of the same command */
@@ -272,8 +278,8 @@ module.exports = function (RED) {
 			if (!writeInterval || !lastWrite[command]) return;
 			const wait = writeInterval * 1000 - (Date.now() - lastWrite[command]);
 			if (wait > 0) {
-				throw new Error(`${command}: write blocked, next write possible in ${Math.ceil(wait / 1000)} s ` +
-					`(min. interval ${writeInterval} s)`);
+				throw new Error(t('alphaess-modbus.errors.rateLimited',
+					{ command, wait: Math.ceil(wait / 1000), interval: writeInterval }));
 			}
 		}
 
@@ -302,25 +308,26 @@ module.exports = function (RED) {
 			if (!frames.length) {
 				const data = store2cache(block, current);
 				reply(send, msg, data, { unchanged: true, written: [] });
-				node.status({ fill: 'blue', shape: 'ring', text: `${command}: unchanged` });
+				node.status({ fill: 'blue', shape: 'ring', text: t('alphaess-modbus.status.unchanged', { command }) });
 				return;
 			}
 			checkRate(command);
 			const written = await writeFrames(command, frames);
 			const data = await readBlock(block);
 			reply(send, msg, data, { unchanged: false, written });
-			node.status({ fill: 'blue', shape: 'dot', text: `${command}: ${frames.reduce((s, f) => s + f.values.length, 0)} register(s) written` });
+			const count = frames.reduce((s, f) => s + f.values.length, 0);
+			node.status({ fill: 'blue', shape: 'dot', text: t('alphaess-modbus.status.written', { command, count }) });
 		}
 
 		node.on('input', async (msg, send, done) => {
 			send = send || function () { node.send.apply(node, arguments); };
 			done = done || function (err) { if (err) node.error(err, msg); };
-			const t = String(msg.topic || 'read');
+			const tp = String(msg.topic || 'read');
 			try {
-				switch (t) {
+				switch (tp) {
 					case 'read':
 					case topic:
-						if (!(await poll(send, msg, true))) node.warn('poll already running – request skipped');
+						if (!(await poll(send, msg, true))) node.warn(t('alphaess-modbus.warn.pollRunning'));
 						break;
 					case 'readInfo': {
 						const errors = await refreshInfo();
@@ -330,7 +337,7 @@ module.exports = function (RED) {
 					case 'readRaw': {
 						const a = Number(msg.payload && msg.payload.address);
 						const c = Number(msg.payload && msg.payload.count) || 1;
-						if (!Number.isInteger(a) || a < 0 || a > 0xFFFF) throw new RangeError('payload.address must be 0..65535');
+						if (!Number.isInteger(a) || a < 0 || a > 0xFFFF) throw new RangeError(t('alphaess-modbus.errors.addressRange'));
 						reply(send, msg, await client.readHoldingRegisters(a, c));
 						break;
 					}
@@ -340,7 +347,7 @@ module.exports = function (RED) {
 						checkRate('dispatch');
 						const written = await writeFrames('dispatch', [frame]);
 						reply(send, msg, await readBlock('dispatch'), { written });
-						node.status({ fill: 'blue', shape: 'dot', text: `dispatch ${msg.payload.power}W` });
+						node.status({ fill: 'blue', shape: 'dot', text: t('alphaess-modbus.status.dispatch', { power: msg.payload.power }) });
 						break;
 					}
 					case 'dispatchStop': {
@@ -348,7 +355,7 @@ module.exports = function (RED) {
 						requireWrite();
 						const written = await writeFrames('dispatchStop', [cmd.encodeDispatchStop()]);
 						reply(send, msg, await readBlock('dispatch'), { written });
-						node.status({ fill: 'blue', shape: 'ring', text: 'dispatch stopped' });
+						node.status({ fill: 'blue', shape: 'ring', text: t('alphaess-modbus.status.dispatchStopped') });
 						break;
 					}
 					case 'feedIn': {
@@ -368,7 +375,7 @@ module.exports = function (RED) {
 							(current) => cmd.encodeTimePeriod(current, msg.payload, opts.socScale).values, send, msg);
 						break;
 					default:
-						throw new Error(`Unknown topic "${t}"`);
+						throw new Error(t('alphaess-modbus.errors.unknownTopic', { topic: tp }));
 				}
 				done();
 			} catch (err) {
@@ -384,8 +391,8 @@ module.exports = function (RED) {
 		});
 
 		node.status(storeWarning
-			? { fill: 'yellow', shape: 'ring', text: `context store "${store}" missing in settings.js` }
-			: { fill: 'grey', shape: 'ring', text: interval ? `polling every ${interval}s` : 'manual mode' });
+			? { fill: 'yellow', shape: 'ring', text: t('alphaess-modbus.status.storeMissing', { store }) }
+			: { fill: 'grey', shape: 'ring', text: interval ? t('alphaess-modbus.status.polling', { interval }) : t('alphaess-modbus.status.manual') });
 		schedule(1000);
 	}
 	RED.nodes.registerType('alphaess-modbus', AlphaEssModbusNode);

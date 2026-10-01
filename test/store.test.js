@@ -44,21 +44,21 @@ function input(node, msg) {
 }
 const close = (node) => new Promise((r) => node.emit('close', r));
 
-async function run(contextStorage, contextStore) {
+async function run(t, contextStorage, contextStore) {
 	const server = createServer(createRegisters());
-	await new Promise((r) => server.listen(0, r));
+	await new Promise((r) => server.listen(0, '127.0.0.1', r));
 	const types = fakeRED(contextStorage);
 	const cfg = new types['alphaess-modbus-config']({ id: 'c', host: '127.0.0.1', port: server.address().port, delay: 0 });
 	const n = new types['alphaess-modbus']({ id: 'n', server: 'c', interval: 0, contextStore,
 		block_grid: true, block_battery: true, block_inverter: true });
+	t.after(async () => { await close(n); await close(cfg); server.close(); });
 	const initial = n.statuses[0];
 	const r = await input(n, {});
-	await close(n); await close(cfg); server.close();
 	return { n, initial, data: r.out[0][0], alarm: r.out[0][1] };
 }
 
-test('missing store: warning at start, yellow status, warning in payload and alarm output', async () => {
-	const { n, initial, data, alarm } = await run(undefined, 'file');
+test('missing store: warning at start, yellow status, warning in payload and alarm output', async (t) => {
+	const { n, initial, data, alarm } = await run(t, undefined, 'file');
 	assert.strictEqual(n.warnings.length, 1);
 	assert.match(n.warnings[0], /context store "file" is not configured/);
 	assert.strictEqual(initial.fill, 'yellow');
@@ -71,15 +71,15 @@ test('missing store: warning at start, yellow status, warning in payload and ala
 	assert.strictEqual(data.payload.daily.complete, false);
 });
 
-test('configured store: no warning', async () => {
-	const { n, initial, data } = await run({ default: { module: 'memory' }, file: { module: 'localfilesystem' } }, 'file');
+test('configured store: no warning', async (t) => {
+	const { n, initial, data } = await run(t, { default: { module: 'memory' }, file: { module: 'localfilesystem' } }, 'file');
 	assert.deepStrictEqual(n.warnings, []);
 	assert.strictEqual(initial.fill, 'grey');
 	assert.strictEqual(n.statuses[n.statuses.length - 1].fill, 'green');
 	assert.ok(!data.payload.warnings.some((w) => /not persistent/.test(w)));
 });
 
-test('default store: no warning', async () => {
-	const { n } = await run(undefined, '');
+test('default store: no warning', async (t) => {
+	const { n } = await run(t, undefined, '');
 	assert.deepStrictEqual(n.warnings, []);
 });

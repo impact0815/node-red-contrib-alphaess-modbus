@@ -4,7 +4,7 @@
     "type": "tab",
     "label": "AlphaESS Modbus",
     "disabled": false,
-    "info": "Example for node-red-contrib-alphaess-modbus. Set the IP address in the connection config. Write commands only work when \"Allow write access\" is enabled."
+    "info": "Example for @impact0815/node-red-contrib-alphaess-modbus. Set the IP address in the connection config. Write commands only work when \"Allow write access\" is enabled – use at your own risk."
   },
   {
     "id": "cfg1",
@@ -107,9 +107,9 @@
     "id": "c1",
     "type": "comment",
     "z": "tab1",
-    "name": "Control – requires \"Allow write access\"",
+    "name": "Control – requires \"Allow write access\", use at your own risk",
     "info": "",
-    "x": 220,
+    "x": 260,
     "y": 200,
     "wires": []
   },

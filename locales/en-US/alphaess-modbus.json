@@ -1,0 +1,106 @@
+{
+	"alphaess-modbus": {
+		"label": {
+			"connection": "Connection",
+			"host": "Host",
+			"port": "Port",
+			"unitId": "Unit ID",
+			"timeout": "Timeout",
+			"delay": "Delay",
+			"interval": "Interval",
+			"slowInterval": "Slow blocks",
+			"staleAfter": "Stale after",
+			"topic": "Topic",
+			"platform": "EMS",
+			"blocks": "Read blocks",
+			"includePvMeter": "Add PV meter to PV power / daily PV energy",
+			"contextStore": "Daily store",
+			"mqttBroker": "Broker",
+			"mqttPrefix": "Prefix",
+			"mqttQos": "QoS",
+			"mqttRetain": "Retain",
+			"mqttDetails": "Publish block details as JSON",
+			"allowWrite": "Allow write access",
+			"maxPower": "Max. power",
+			"writeInterval": "Min. interval",
+			"socScale": "SOC scale"
+		},
+		"unit": {
+			"unitId": "(default 85 = 0x55)",
+			"ms": "ms",
+			"delay": "ms between requests",
+			"interval": "s (0 = only on input)",
+			"slowInterval": "s (config, time periods, dispatch)",
+			"staleAfter": "s without successful read",
+			"allowWrite": "(dispatch, feed-in, time periods)",
+			"maxPower": "W (dispatch limit)",
+			"writeInterval": "s between two writes of the same command (0 = off)",
+			"socScale": "%/bit for time period SOC values"
+		},
+		"placeholder": {
+			"host": "192.168.1.100",
+			"maxPower": "e.g. 5000"
+		},
+		"block": {
+			"grid": "Grid meter",
+			"pvMeter": "PV meter (AC coupled)",
+			"battery": "Battery",
+			"inverter": "Inverter",
+			"systemRun": "System running data / system fault",
+			"systemConfig": "System config (slow)",
+			"timePeriod": "Time period control (slow)",
+			"dispatch": "Dispatch state (slow)",
+			"info": "Device info (at start, then daily)"
+		},
+		"section": {
+			"mqtt": "MQTT",
+			"control": "Control"
+		},
+		"outputs": {
+			"data": "data",
+			"alarm": "alarm (on change)",
+			"response": "command response"
+		},
+		"store": {
+			"default": "default (__store__)",
+			"notConfigured": "__store__ (not configured in settings.js)",
+			"missing": "This store does not exist – daily values are not persistent.",
+			"onlyMemory": "Only the in-memory store is configured. Add a persistent store (e.g. \"file\") to contextStorage in settings.js to keep daily values across restarts."
+		},
+		"tip": {
+			"writeWarning": "Write commands change how your storage system charges, discharges and feeds into the grid. Use at your own risk – there is no warranty. Make sure the changes are compatible with the manufacturer warranty and the rules of your grid operator.",
+			"disclaimer": "Independent community project, not affiliated with Alpha ESS. Provided as is, without warranty."
+		},
+		"status": {
+			"noConnection": "no connection configured",
+			"polling": "polling every __interval__ s",
+			"manual": "manual mode",
+			"storeMissing": "context store \"__store__\" missing in settings.js",
+			"storeMissingShort": "store \"__store__\" missing",
+			"pv": "PV __value__W",
+			"grid": "Grid __value__W",
+			"soc": "SOC __value__%",
+			"load": "Load __value__W",
+			"ok": "ok",
+			"unchanged": "__command__: unchanged",
+			"written": "__command__: __count__ register(s) written",
+			"dispatch": "dispatch __power__W",
+			"dispatchStopped": "dispatch stopped"
+		},
+		"warn": {
+			"storeMissing": "Daily values: context store \"__store__\" is not configured in settings.js – daily values are not persistent and restart after every Node-RED restart",
+			"writeEnabled": "Write access is enabled. Write commands change the behaviour of the storage system – use at your own risk.",
+			"pollRunning": "poll already running – request skipped"
+		},
+		"log": {
+			"fallback": "__block__: extended registers not supported by this system, reading __min__ instead of __count__ registers",
+			"unsupported": "__block__: not supported by this system"
+		},
+		"errors": {
+			"writeDisabled": "Writing is disabled – enable \"Allow write access\" in the node settings",
+			"rateLimited": "__command__: write blocked, next write possible in __wait__ s (min. interval __interval__ s)",
+			"unknownTopic": "Unknown topic \"__topic__\"",
+			"addressRange": "payload.address must be 0..65535"
+		}
+	}
+}

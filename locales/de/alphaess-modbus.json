@@ -1,0 +1,106 @@
+{
+	"alphaess-modbus": {
+		"label": {
+			"connection": "Verbindung",
+			"host": "Host",
+			"port": "Port",
+			"unitId": "Unit-ID",
+			"timeout": "Timeout",
+			"delay": "Pause",
+			"interval": "Intervall",
+			"slowInterval": "Langsame Blöcke",
+			"staleAfter": "Veraltet nach",
+			"topic": "Topic",
+			"platform": "EMS",
+			"blocks": "Blöcke lesen",
+			"includePvMeter": "PV-Zähler zu PV-Leistung / Tages-PV-Energie addieren",
+			"contextStore": "Tageswerte-Speicher",
+			"mqttBroker": "Broker",
+			"mqttPrefix": "Präfix",
+			"mqttQos": "QoS",
+			"mqttRetain": "Retain",
+			"mqttDetails": "Blockdetails als JSON senden",
+			"allowWrite": "Schreibzugriff erlauben",
+			"maxPower": "Max. Leistung",
+			"writeInterval": "Mindestabstand",
+			"socScale": "SOC-Skalierung"
+		},
+		"unit": {
+			"unitId": "(Standard 85 = 0x55)",
+			"ms": "ms",
+			"delay": "ms zwischen Anfragen",
+			"interval": "s (0 = nur bei Eingang)",
+			"slowInterval": "s (Konfiguration, Zeitfenster, Dispatch)",
+			"staleAfter": "s ohne erfolgreiches Lesen",
+			"allowWrite": "(Dispatch, Einspeisung, Zeitfenster)",
+			"maxPower": "W (Dispatch-Grenze)",
+			"writeInterval": "s zwischen zwei Schreibvorgängen desselben Befehls (0 = aus)",
+			"socScale": "%/bit für die SOC-Werte der Zeitfenster"
+		},
+		"placeholder": {
+			"host": "192.168.1.100",
+			"maxPower": "z. B. 5000"
+		},
+		"block": {
+			"grid": "Netzzähler",
+			"pvMeter": "PV-Zähler (AC-gekoppelt)",
+			"battery": "Batterie",
+			"inverter": "Wechselrichter",
+			"systemRun": "Systemlaufdaten / Systemfehler",
+			"systemConfig": "Systemkonfiguration (langsam)",
+			"timePeriod": "Zeitfenster (langsam)",
+			"dispatch": "Dispatch-Status (langsam)",
+			"info": "Geräteinfos (beim Start, dann täglich)"
+		},
+		"section": {
+			"mqtt": "MQTT",
+			"control": "Steuerung"
+		},
+		"outputs": {
+			"data": "Daten",
+			"alarm": "Alarm (bei Änderung)",
+			"response": "Befehlsantwort"
+		},
+		"store": {
+			"default": "Standard (__store__)",
+			"notConfigured": "__store__ (nicht in settings.js konfiguriert)",
+			"missing": "Dieser Speicher existiert nicht – die Tageswerte werden nicht dauerhaft gespeichert.",
+			"onlyMemory": "Es ist nur der Arbeitsspeicher konfiguriert. Trage in settings.js unter contextStorage einen dauerhaften Speicher ein (z. B. \"file\"), damit die Tageswerte einen Neustart überstehen."
+		},
+		"tip": {
+			"writeWarning": "Schreibbefehle verändern, wie dein Speichersystem lädt, entlädt und ins Netz einspeist. Nutzung auf eigene Gefahr – es gibt keine Gewährleistung. Stelle sicher, dass die Änderungen mit der Herstellergarantie und den Vorgaben deines Netzbetreibers vereinbar sind.",
+			"disclaimer": "Unabhängiges Community-Projekt, nicht mit Alpha ESS verbunden. Bereitgestellt wie besehen, ohne Gewährleistung."
+		},
+		"status": {
+			"noConnection": "keine Verbindung konfiguriert",
+			"polling": "Abfrage alle __interval__ s",
+			"manual": "manueller Modus",
+			"storeMissing": "Kontextspeicher \"__store__\" fehlt in settings.js",
+			"storeMissingShort": "Speicher \"__store__\" fehlt",
+			"pv": "PV __value__W",
+			"grid": "Netz __value__W",
+			"soc": "SOC __value__%",
+			"load": "Last __value__W",
+			"ok": "ok",
+			"unchanged": "__command__: unverändert",
+			"written": "__command__: __count__ Register geschrieben",
+			"dispatch": "Dispatch __power__W",
+			"dispatchStopped": "Dispatch gestoppt"
+		},
+		"warn": {
+			"storeMissing": "Tageswerte: Kontextspeicher \"__store__\" ist nicht in settings.js konfiguriert – die Tageswerte werden nicht dauerhaft gespeichert und beginnen nach jedem Node-RED-Neustart neu",
+			"writeEnabled": "Schreibzugriff ist aktiviert. Schreibbefehle verändern das Verhalten des Speichersystems – Nutzung auf eigene Gefahr.",
+			"pollRunning": "Abfrage läuft bereits – Anfrage übersprungen"
+		},
+		"log": {
+			"fallback": "__block__: erweiterte Register werden von diesem System nicht unterstützt, lese __min__ statt __count__ Register",
+			"unsupported": "__block__: wird von diesem System nicht unterstützt"
+		},
+		"errors": {
+			"writeDisabled": "Schreiben ist deaktiviert – aktiviere \"Schreibzugriff erlauben\" in den Einstellungen der Node",
+			"rateLimited": "__command__: Schreiben blockiert, nächster Schreibvorgang in __wait__ s möglich (Mindestabstand __interval__ s)",
+			"unknownTopic": "Unbekanntes Topic \"__topic__\"",
+			"addressRange": "payload.address muss zwischen 0 und 65535 liegen"
+		}
+	}
+}

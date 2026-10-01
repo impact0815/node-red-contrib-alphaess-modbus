@@ -1,4 +1,6 @@
-# node-red-contrib-alphaess-modbus
+# @impact0815/node-red-contrib-alphaess-modbus
+
+[Deutsche Version → README.de.md](https://github.com/impact0815/node-red-contrib-alphaess-modbus/blob/main/README.de.md)
 
 Local access to **Alpha ESS** storage systems (SMILE series, Storion) via **Modbus TCP**, without the cloud.
 
@@ -11,22 +13,37 @@ Local access to **Alpha ESS** storage systems (SMILE series, Storion) via **Modb
 - Optional control, **disabled by default**: dispatch (charge/discharge), feed-in limit, charge/discharge time periods
 - Careful writing: unchanged values are not written, only changed registers are written, optional minimum interval between writes
 - Works with current and older EMS firmware (automatic fallback to the older register list)
+- Editor and help in **English and German**
 - No runtime dependencies
 
 Register addresses and scaling are based on the *AlphaESS Household Modbus Register Parameter List*
 (successor of *Register Parameter List V1.1*).
 
-> This is an independent community project and is not affiliated with Alpha ESS.
+## Disclaimer
+
+> **Use at your own risk. No warranty.**
+
+- This is an independent community project. It is **not affiliated with, endorsed or supported by Alpha ESS**.
+  "Alpha ESS", "SMILE" and "Storion" are used only to describe compatibility; trademarks belong to their respective owners.
+- The software is provided **"as is", without warranty of any kind**, see [LICENSE](LICENSE) (MIT).
+  The authors are not liable for any damage resulting from its use, to the extent permitted by law.
+- **Reading** data does not change the system. **Write commands** (dispatch, feed-in limit, time periods) change how the system
+  charges, discharges and feeds into the grid. Wrong values can lead to unwanted grid import, a too deep or too shallow discharge,
+  a missing backup reserve, or a feed-in that violates the rules of your grid operator, and may affect the manufacturer warranty.
+- Write access is disabled by default. Enable it only if you understand the effect of each command; start with short durations
+  and check the result in the manufacturer app.
+- Register information is based on the manufacturer documentation and on tests with individual systems.
+  Your model or firmware may behave differently.
 
 ## Installation
 
-In your Node-RED user directory (usually `~/.node-red`):
+Via *Manage palette* in the Node-RED editor (search for `alphaess-modbus`), or in your Node-RED user directory (usually `~/.node-red`):
 
 ```
-npm install node-red-contrib-alphaess-modbus
+npm install @impact0815/node-red-contrib-alphaess-modbus
 ```
 
-or via *Manage palette* in the Node-RED editor. Then restart Node-RED.
+Then restart Node-RED.
 
 Requirements: Node-RED 3.0 or later, Node.js 18 or later, and Modbus TCP enabled on the Alpha ESS system.
 
@@ -35,11 +52,22 @@ Requirements: Node-RED 3.0 or later, Node.js 18 or later, and Modbus TCP enabled
 With the official `nodered/node-red` image, install into `/data` so the package survives container updates:
 
 ```
-docker exec -it node-red bash -c "cd /data && npm install node-red-contrib-alphaess-modbus"
+docker exec -it node-red bash -c "cd /data && npm install @impact0815/node-red-contrib-alphaess-modbus"
 docker restart node-red
 ```
 
 After installing or updating, reload the editor in the browser (F5); otherwise new outputs and settings are not shown.
+
+### Upgrading from the unscoped package (versions before 0.4.0)
+
+Up to 0.3.x the package was installed as `node-red-contrib-alphaess-modbus` (from a local file).
+Both packages provide the same node types, so remove the old one first. Your flows and settings are kept:
+
+```
+cd ~/.node-red        # Docker: docker exec -it node-red bash -c "cd /data && ..."
+npm uninstall node-red-contrib-alphaess-modbus
+npm install @impact0815/node-red-contrib-alphaess-modbus
+```
 
 ## Quick start
 
@@ -49,6 +77,16 @@ After installing or updating, reload the editor in the browser (F5); otherwise n
 4. Optional: set up a persistent context store for the [daily values](#daily-values) and select an [MQTT](#mqtt) broker.
 
 If the status shows `ECONNREFUSED`, see [Troubleshooting](#troubleshooting).
+
+## Languages
+
+| Part | Language |
+|---|---|
+| Editor (labels, hints) and help in the sidebar | English or German, following the language setting of the editor (*User settings → Language*, default: browser language) |
+| Status texts under the node, log messages, error messages | language of the Node-RED server |
+| Data in `msg.payload` (field names, alarm and warning texts) and MQTT topics | always English, so flows work independently of the language |
+
+Other languages can be added under `locales/`, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Configuration
 
@@ -78,7 +116,7 @@ The EMS usually accepts only one Modbus TCP connection at a time. Other Modbus c
 | Add PV meter | off | adds an AC-coupled PV inverter (PV meter) to PV power and daily PV energy, see [PV meter](#pv-meter-ac-coupled-systems) |
 | Daily store | default | context store for daily values, selected from the stores configured in `settings.js`; use a persistent store (e.g. `file`) to keep them across restarts, see [Daily values](#daily-values) |
 | MQTT broker | – | optional, see [MQTT](#mqtt) |
-| Allow write access | off | required for any control command |
+| Allow write access | off | required for any control command; shows a warning in the editor and logs a notice at start |
 | Max. power | – | optional upper limit for dispatch power in W |
 | Min. interval | 10 s | minimum time between two actual writes of the same command, `0` = off |
 | SOC scale | 0.1 | %/bit for the SOC values of the time period registers, see [Check the SOC scale](#check-the-soc-scale) |
@@ -236,7 +274,7 @@ The node uses the connection of the Node-RED core `mqtt-broker` config node, whi
 | `feedIn` | `70` | max. feed-in in % |
 | `timePeriod` | `{"flag":1,"chargeCutSoc":90,"upsReserveSoc":10,"charge1":{"start":"01:00","stop":"05:00"}}` | charge/discharge time periods |
 
-The write commands require **Allow write access**. The response is sent on output 3.
+The write commands require **Allow write access** – read the [Disclaimer](#disclaimer) first. The response is sent on output 3.
 
 `dispatch`:
 
@@ -245,6 +283,8 @@ The write commands require **Allow write access**. The response is sent on outpu
 - `duration` in seconds, default 300. After this time the system returns to normal operation.
 - `mode`: default 2 = *State of Charge control*. Allowed: 1–10 and 19 (*No Battery Charge*).
   Test and off-grid modes of the register list (BurnIn, OSW modes) are rejected.
+
+`feedIn`: a feed-in limit may be required by your grid operator – only change it if you are allowed to.
 
 `timePeriod` changes only the given fields.
 `flag`: 0 = off, 1 = charge, 2 = discharge, 3 = both.
@@ -345,6 +385,8 @@ Keep `duration` short and repeat the command if needed. If the flow stops, the s
 | `Writing is disabled` | Enable *Allow write access*. |
 | `write blocked, next write possible in … s` | *Min. interval* protection. Wait, or check the flow for loops. |
 | New outputs/settings not visible after an update | Restart Node-RED and reload the editor (F5). |
+| Node types registered twice / install conflict after upgrade to 0.4.0 | The old unscoped package is still installed, see [Upgrading](#upgrading-from-the-unscoped-package-versions-before-040). |
+| Editor in English although German is expected | Set *User settings → Language* in the editor to *Deutsch* or the browser language to German. |
 | Link call runs into a timeout | Output 3 is not connected to the *link out* in return mode, see [Examples](#send-commands-from-other-tabs-with-feedback). |
 
 ## Register blocks
@@ -379,8 +421,8 @@ node test/mock-server.js 5020 --legacy    # simulator of an older firmware (regi
 ```
 
 For a manual test without a real system, start the simulator and set the connection to `127.0.0.1:5020`.
-Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md). Issues: https://github.com/impact0815/node-red-contrib-alphaess-modbus/issues
+Contributions and translations: see [CONTRIBUTING.md](CONTRIBUTING.md). Issues: https://github.com/impact0815/node-red-contrib-alphaess-modbus/issues
 
 ## License
 
-MIT
+MIT – see [LICENSE](LICENSE). Provided without warranty, see [Disclaimer](#disclaimer).

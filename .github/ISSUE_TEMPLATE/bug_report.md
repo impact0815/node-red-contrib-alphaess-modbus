@@ -10,7 +10,7 @@ What happened, and what did you expect?
 **System**
 - Node-RED version:
 - Node.js version:
-- node-red-contrib-alphaess-modbus version:
+- @impact0815/node-red-contrib-alphaess-modbus version:
 - Alpha ESS system (model, EMS version from `payload.info`):
 
 **Output / log**

@@ -1,0 +1,317 @@
+<script type="text/html" data-help-name="alphaess-modbus-config">
+	<p>Modbus-TCP-Verbindung zu einem Alpha-ESS-System (EMS). Wird von einer oder mehreren <b>AlphaESS-Modbus</b>-Nodes genutzt.</p>
+
+	<h3>Einstellungen</h3>
+	<dl class="message-properties">
+		<dt>Host <span class="property-type">IP / Hostname</span></dt>
+		<dd>Adresse des EMS im Netzwerk. Eine feste IP-Adresse (DHCP-Reservierung im Router) wird empfohlen.
+			Die aktuell genutzte Adresse steht in <code>details.systemConfig.localIp</code>.</dd>
+		<dt>Port <span class="property-type">Zahl</span></dt>
+		<dd>Modbus-TCP-Port, normalerweise <code>502</code>.</dd>
+		<dt>Unit-ID <span class="property-type">Zahl</span></dt>
+		<dd>Modbus-Slave-Adresse. Alpha ESS nutzt standardmäßig <code>85</code> (0x55), sichtbar in
+			<code>details.systemConfig.modbusAddress</code>.</dd>
+		<dt>Timeout <span class="property-type">ms</span></dt>
+		<dd>Maximale Wartezeit pro Anfrage (Standard 2000 ms). Bei WLAN- oder Powerline-Verbindungen auf 3000–5000 ms erhöhen.
+			Nach einem Timeout wird die Verbindung geschlossen und mit der nächsten Anfrage neu aufgebaut.</dd>
+		<dt>Pause <span class="property-type">ms</span></dt>
+		<dd>Pause zwischen zwei Anfragen (Standard 20 ms). Auf 50–100 ms erhöhen, wenn das EMS Timeouts
+			oder <i>Slave device busy</i> meldet.</dd>
+	</dl>
+
+	<h3>Details</h3>
+	<ul>
+		<li>Alle Nodes mit dieser Konfiguration teilen sich <b>eine</b> TCP-Verbindung. Anfragen werden nacheinander gesendet,
+			nie gleichzeitig.</li>
+		<li>Das EMS nimmt meist <b>nur eine Modbus-TCP-Verbindung gleichzeitig</b> an. Weitere Verbindungen werden abgelehnt.</li>
+		<li>Modbus TCP muss am System aktiviert sein. Nach Firmware-Updates prüfen, ob es noch aktiv ist.</li>
+	</ul>
+
+	<h3>Fehlersuche</h3>
+	<dl class="message-properties">
+		<dt><code>ECONNREFUSED</code></dt>
+		<dd>Das System ist erreichbar, lehnt die Verbindung aber ab. Fast immer ist noch ein anderer Modbus-Client verbunden:
+			<ul>
+				<li>alte <code>modbus-getter</code>- / <code>modbus-write</code>-Nodes in anderen Tabs (mit Strg+F nach <code>modbus</code> suchen),</li>
+				<li>eine <b>ungenutzte</b> <code>modbus-client</code>-Konfiguration von <i>node-red-contrib-modbus</i> – Node-RED startet
+					Konfigurationsnodes auch ohne Nutzer. Unter <i>Konfigurationsnodes</i> löschen und mit <i>Vollständig</i> deployen,</li>
+				<li>andere Programme wie Home Assistant, ioBroker, evcc oder ein Wallbox-Lastmanagement.</li>
+			</ul>
+			Ist nichts anderes verbunden, prüfen, ob Modbus TCP aktiviert ist, oder das EMS neu starten.</dd>
+		<dt><code>Timeout</code> / <code>Connect timeout</code></dt>
+		<dd>Falsche IP-Adresse, System nicht erreichbar (Netzwerk, Firewall, Docker-Netzwerk) oder eine langsame Verbindung.
+			Test vom Node-RED-Rechner aus: <code>nc -zv &lt;ip&gt; 502</code>.</dd>
+		<dt><code>Modbus exception 2 (Illegal data address)</code></dt>
+		<dd>Das System unterstützt einen Registerblock nicht. Den Block in der Node abschalten (z. B. <i>PV-Zähler</i> bei Anlagen ohne PV-Zähler).
+			Blöcke, die in der neueren Registerliste erweitert wurden, fallen automatisch auf die ältere Länge zurück.</dd>
+	</dl>
+
+	<h3>Haftungsausschluss</h3>
+	<p>Unabhängiges Community-Projekt, nicht mit Alpha ESS verbunden und nicht von Alpha ESS unterstützt. Bereitgestellt
+		„wie besehen“, ohne Gewährleistung – siehe Hilfe der Node <i>AlphaESS Modbus</i> und die LICENSE.</p>
+</script>
+
+<script type="text/html" data-help-name="alphaess-modbus">
+	<p>Liest Echtzeitdaten eines Alpha-ESS-Speichersystems (SMILE, Storion) lokal per Modbus TCP, berechnet Hausverbrauch,
+		Autarkie, Tageswerte und Alarme und sendet auf Wunsch alles per MQTT.
+		Steuerbefehle (Dispatch, Einspeisegrenze, Zeitfenster) sind vorhanden, aber <b>standardmäßig abgeschaltet</b>.</p>
+
+	<h3>Schnellstart</h3>
+	<ol>
+		<li>Eine Verbindung mit der IP-Adresse des Systems anlegen (Port 502, Unit-ID 85).</li>
+		<li>Die Standardblöcke und das Intervall von 15 s beibehalten. An Ausgang 1 eine Debug-Node anschließen.</li>
+		<li>Deployen. Nach wenigen Sekunden zeigt der Status <code>PV … | Netz … | SOC … | Last …</code>.</li>
+		<li>Optional: einen dauerhaften Kontextspeicher für die Tageswerte einrichten und einen MQTT-Broker auswählen.</li>
+	</ol>
+	<p>Bleibt der Status rot mit <code>ECONNREFUSED</code>, ist noch ein anderer Modbus-Client verbunden – siehe Hilfe der Verbindungs-Node.</p>
+
+	<h3>Eingänge</h3>
+	<p>Der Befehl wird über <code>msg.topic</code> gewählt. Ohne Topic liest die Node alle Blöcke.</p>
+	<dl class="message-properties">
+		<dt>topic <span class="property-type">string</span></dt>
+		<dd>Einer der Befehle unten.</dd>
+		<dt class="optional">payload <span class="property-type">Zahl | Objekt</span></dt>
+		<dd>Parameter des Befehls.</dd>
+	</dl>
+
+	<h4>Lesebefehle</h4>
+	<dl class="message-properties">
+		<dt><code>read</code> (oder kein Topic)</dt>
+		<dd>Liest sofort alle aktivierten Blöcke, auch die langsamen. Ergebnis auf Ausgang 1. Nützlich mit Intervall <code>0</code>,
+			um die Abfrage über eine eigene Inject-Node zu steuern.</dd>
+		<dt><code>readInfo</code></dt>
+		<dd>Liest Seriennummern und Firmware-Versionen erneut. Ergebnis auf Ausgang 3.</dd>
+		<dt><code>readRaw</code></dt>
+		<dd>Liest Rohwerte von Holding-Registern, z. B. um einen Wert mit der Registerdokumentation abzugleichen. Ergebnis auf Ausgang 3.
+			<pre>{ "topic": "readRaw", "payload": { "address": 2128, "count": 1 } }</pre>
+			<code>address</code> ist dezimal (oder <code>0x0850</code> in einem JSON-Ausdruck), <code>count</code> 1–125.</dd>
+	</dl>
+
+	<h4>Schreibbefehle</h4>
+	<p>Benötigen <b>Schreibzugriff erlauben</b>. Ergebnis auf Ausgang 3. Fehler (ungültige Werte, Schreibschutz, Mindestabstand)
+		sind Node-Fehler und lassen sich mit einer <i>catch</i>-Node abfangen. Vor der Nutzung bitte den <i>Haftungsausschluss</i> unten lesen.</p>
+	<dl class="message-properties">
+		<dt><code>timePeriod</code></dt>
+		<dd>Ändert die Lade-/Entladezeitfenster und SOC-Grenzen. <b>Nur die angegebenen Felder werden geändert</b>, alles andere bleibt.
+			<pre>{ "topic": "timePeriod", "payload": { "upsReserveSoc": 20 } }</pre>
+			<pre>{
+  "topic": "timePeriod",
+  "payload": {
+    "flag": 1,
+    "chargeCutSoc": 90,
+    "charge1": { "start": "01:00", "stop": "05:00" }
+  }
+}</pre>
+			<ul>
+				<li><code>flag</code>: 0 = aus, 1 = Ladefenster aktiv, 2 = Entladefenster aktiv, 3 = beide</li>
+				<li><code>upsReserveSoc</code>: SOC in %, der als Reserve bleibt (darunter wird nicht entladen)</li>
+				<li><code>chargeCutSoc</code>: SOC in %, bis zu dem in einem Ladefenster aus dem Netz geladen wird</li>
+				<li><code>charge1</code>, <code>charge2</code>, <code>discharge1</code>, <code>discharge2</code>:
+					<code>{ "start": "HH:MM", "stop": "HH:MM" }</code>, Start oder Stopp allein ist möglich</li>
+			</ul>
+			Ein niedrigerer <code>upsReserveSoc</code> wirkt sofort: Der Akku kann direkt bis zum neuen Wert entladen.
+			Soll das erst zu einer bestimmten Uhrzeit passieren, den Befehl erst dann senden.</dd>
+		<dt><code>feedIn</code></dt>
+		<dd>Maximale Einspeisung ins Netz in %. Eine Einspeisebegrenzung kann von deinem Netzbetreiber vorgeschrieben sein –
+			nur ändern, wenn das zulässig ist.
+			<pre>{ "topic": "feedIn", "payload": 70 }</pre>
+			<code>{ "percent": 70 }</code> wird ebenfalls akzeptiert.</dd>
+		<dt><code>dispatch</code></dt>
+		<dd>Lässt den Akku für eine begrenzte Zeit laden oder entladen.
+			<pre>{ "topic": "dispatch", "payload": { "power": -3000, "soc": 90, "duration": 900 } }</pre>
+			<ul>
+				<li><code>power</code> in W: <b>negativ = laden</b>, positiv = entladen (gleiches Vorzeichen wie <code>payload.battery</code>)</li>
+				<li><code>soc</code>: Ziel-SOC in %, Standard 100 beim Laden, 10 beim Entladen</li>
+				<li><code>duration</code> in s, Standard 300 – danach kehrt das System von selbst in den Normalbetrieb zurück.
+					Kurz halten und bei Bedarf wiederholen; ein abgestürzter Flow kann das System dann nicht im Dispatch-Modus zurücklassen.</li>
+				<li><code>mode</code>: Standard 2 = <i>State of Charge control</i>. Erlaubt: 1–10 und 19 (<i>No Battery Charge</i>);
+					Test- und Inselmodi werden abgelehnt.</li>
+			</ul></dd>
+		<dt><code>dispatchStop</code></dt>
+		<dd>Beendet einen Dispatch sofort. Wird nie durch den <i>Mindestabstand</i> blockiert.</dd>
+	</dl>
+
+	<h3>Ausgänge</h3>
+	<ol class="node-ports">
+		<li>Daten – eine Nachricht pro Abfragezyklus
+			<dl class="message-properties">
+				<dt>payload.consumption <span class="property-type">Zahl</span></dt><dd>Hausverbrauch in W</dd>
+				<dt>payload.grid <span class="property-type">Zahl</span></dt><dd>Netzleistung in W, <b>+ Bezug / − Einspeisung</b></dd>
+				<dt>payload.modules <span class="property-type">Zahl</span></dt><dd>PV-Leistung in W</dd>
+				<dt>payload.battery <span class="property-type">Zahl</span></dt><dd>Batterieleistung in W, <b>+ Entladen / − Laden</b></dd>
+				<dt>payload.soc <span class="property-type">Zahl</span></dt><dd>Ladezustand in %</dd>
+				<dt>payload.gridImport / gridExport / batteryCharge / batteryDischarge <span class="property-type">Zahl</span></dt>
+				<dd>dieselben Werte nach Richtung getrennt, immer ≥ 0</dd>
+				<dt>payload.autarky <span class="property-type">Zahl</span></dt><dd>Anteil des Hausverbrauchs, der nicht aus dem Netz kommt, in %</dd>
+				<dt>payload.selfConsumptionRate <span class="property-type">Zahl</span></dt><dd>Anteil der PV-Leistung, der selbst genutzt wird, in %</dd>
+				<dt>payload.daily <span class="property-type">Objekt</span></dt>
+				<dd>Energie in kWh seit Mitternacht (Ortszeit): <code>pv</code>, <code>gridFeed</code>, <code>gridImport</code>,
+					<code>batteryCharge</code>, <code>batteryDischarge</code>, <code>batteryChargeFromGrid</code>, <code>consumption</code>,
+					dazu <code>autarky</code>, <code>selfConsumptionRate</code>, <code>since</code> und <code>complete</code></dd>
+				<dt>payload.yesterday <span class="property-type">Objekt</span></dt><dd>die Tageswerte des Vortags</dd>
+				<dt>payload.alarms / warnings <span class="property-type">Array</span></dt><dd>aktive Fehler und Warnungen als Text (immer Englisch)</dd>
+				<dt>payload.blocks <span class="property-type">Objekt</span></dt>
+				<dd>pro Block: <code>age</code> in s seit dem letzten erfolgreichen Lesen, <code>stale</code>, letzter <code>error</code>
+					und <code>registers</code>, falls der Block auf die ältere Registerlänge zurückgefallen ist</dd>
+				<dt>payload.details <span class="property-type">Objekt</span></dt>
+				<dd>alle dekodierten Register pro Block (<code>grid</code>, <code>battery</code>, <code>inverter</code>, …)</dd>
+				<dt class="optional">payload.info <span class="property-type">Objekt</span></dt><dd>Seriennummern (Wechselrichter, EMS, WLAN, Batteriemodule) und Firmware-Versionen</dd>
+				<dt class="optional">errors <span class="property-type">Objekt</span></dt><dd>Lesefehler dieses Zyklus pro Block</dd>
+			</dl>
+			<p><code>consumption = modules + grid + battery</code>. Die Felder <code>consumption</code>, <code>grid</code>, <code>modules</code>,
+				<code>battery</code> und <code>soc</code> heißen wie in der Cloud-Node <i>node-red-contrib-alphaess</i>.</p>
+		</li>
+		<li>Alarm – nur bei Änderung von Alarmen oder Warnungen und einmal nach dem Start
+			<pre>{ "active": true, "alarms": ["System: Grid_Meter_Lost"], "warnings": [], "timestamp": "…" }</pre>
+			<code>active</code> ist <code>true</code>, wenn mindestens ein Alarm aktiv ist. Warnungen allein setzen <code>active</code> nicht.
+			Diesen Ausgang mit dem eigenen Benachrichtigungs-Flow verbinden.</li>
+		<li>Befehlsantwort – Antwort auf jeden Befehl außer <code>read</code>
+			<dl class="message-properties">
+				<dt>payload <span class="property-type">Objekt | Array</span></dt>
+				<dd>der betroffene Block, nach dem Befehl zurückgelesen (Rohwerte bei <code>readRaw</code>)</dd>
+				<dt class="optional">written <span class="property-type">Array</span></dt>
+				<dd>geschriebene Register, z. B. <code>[{ "address": "0x0850", "values": [200] }]</code>; leer, wenn nichts geschrieben wurde</dd>
+				<dt class="optional">unchanged <span class="property-type">boolean</span></dt>
+				<dd><code>true</code>, wenn <code>timePeriod</code> / <code>feedIn</code> die gewünschten Werte schon hatten</dd>
+			</dl>
+			Alle anderen Eigenschaften der Eingangsnachricht bleiben erhalten.</li>
+	</ol>
+
+	<h3>Einstellungen</h3>
+	<dl class="message-properties">
+		<dt>Intervall <span class="property-type">s</span></dt>
+		<dd>Abfrageintervall für Netz, Batterie, Wechselrichter und Systemdaten. 10–30 s sind sinnvoll. <code>0</code> = nur bei Eingang.</dd>
+		<dt>Langsame Blöcke <span class="property-type">s</span></dt>
+		<dd>Intervall für Systemkonfiguration, Zeitfenster und Dispatch-Status (Standard 300 s). Diese Werte ändern sich selten.
+			Nach einem Schreibbefehl wird der betroffene Block sofort gelesen.</dd>
+		<dt>Veraltet nach <span class="property-type">s</span></dt>
+		<dd>Zeit ohne erfolgreiches Lesen, nach der ein Block als veraltet gilt (Standard 180 s). Einzelne Lesefehler werden mit dem
+			letzten Wert überbrückt; veraltete Blöcke lösen einen Alarm aus und werden aus <code>details</code> entfernt.
+			Mindestens das Dreifache des <i>Intervalls</i> wählen.</dd>
+		<dt>Topic</dt>
+		<dd><code>msg.topic</code> der Datennachrichten. Der Alarm-Ausgang nutzt <code>&lt;topic&gt;/alarm</code>.</dd>
+		<dt>EMS</dt>
+		<dd>Wählt die Texte für Batteriefehler und -warnungen. Die EMS-Version steht in <code>info.systemInfo.emsVersion</code>.</dd>
+		<dt>Blöcke lesen</dt>
+		<dd>
+			<ul>
+				<li><b>Netzzähler</b>, <b>Batterie</b>, <b>Wechselrichter</b>: nötig für Hausverbrauch, Autarkie und Tageswerte.</li>
+				<li><b>PV-Zähler (AC-gekoppelt)</b>: nur für Anlagen mit einem zusätzlichen, externen PV-Wechselrichter, der ins Hausnetz einspeist.
+					Standardmäßig aus, weil Anlagen ohne PV-Zähler sonst Fehler oder Nullen liefern. Prüfen in <code>details.systemConfig</code>:
+					<code>systemMode.text</code> = <code>AC</code> / <code>Hybrid</code> oder <code>pvCapacityGridInverter</code> &gt; 0
+					sprechen für einen PV-Zähler; bei <code>DC</code> und <code>0</code> ausgeschaltet lassen.</li>
+				<li><b>Systemlaufdaten</b>: Systemfehler (z. B. <i>Grid_Meter_Lost</i>, <i>BMS_Lost</i>) und die Energie des externen PV-Wechselrichters.</li>
+				<li><b>Systemkonfiguration</b>, <b>Zeitfenster</b>, <b>Dispatch-Status</b>: aktuelle Einstellungen; nötig, um die Wirkung von Schreibbefehlen zu sehen.</li>
+				<li><b>Geräteinfos</b>: Seriennummern und Firmware-Versionen, beim Start und einmal täglich gelesen.</li>
+			</ul></dd>
+		<dt>PV-Zähler zu PV-Leistung / Tages-PV-Energie addieren</dt>
+		<dd>Rechnet den externen PV-Wechselrichter in <code>modules</code>, <code>consumption</code> und <code>daily.pv</code> ein.
+			Benötigt die Blöcke <i>PV-Zähler</i> und <i>Systemlaufdaten</i>.</dd>
+		<dt>Tageswerte-Speicher</dt>
+		<dd>Kontextspeicher für die Tageswerte. Die Liste zeigt die in <code>settings.js</code> konfigurierten Speicher.
+			Mit dem Standard-Arbeitsspeicher beginnen die Tageswerte nach jedem Node-RED-Neustart neu – siehe <i>Tageswerte</i>.</dd>
+		<dt>MQTT-Broker / Präfix / QoS / Retain</dt>
+		<dd>Sendet direkt über eine vorhandene MQTT-Broker-Konfiguration, ohne MQTT-out-Node. Siehe <i>MQTT</i>.</dd>
+		<dt>Blockdetails als JSON senden</dt>
+		<dd>Sendet zusätzlich jeden Block als JSON an <code>&lt;Präfix&gt;/details/&lt;Block&gt;</code>. Größere Nachrichten; standardmäßig aus.</dd>
+		<dt>Schreibzugriff erlauben</dt>
+		<dd>Schaltet die Schreibbefehle frei. Ohne diese Option schlagen Schreibbefehle mit einem Fehler fehl und es wird nichts geschrieben.
+			Ist sie aktiv, schreibt die Node beim Start einen Hinweis ins Log.</dd>
+		<dt>Max. Leistung <span class="property-type">W</span></dt>
+		<dd>Obergrenze für die Leistung bei <code>dispatch</code>. Empfohlen: die maximale Lade-/Entladeleistung deiner Batterie
+			(<code>details.battery.maxChargePower</code>).</dd>
+		<dt>Mindestabstand <span class="property-type">s</span></dt>
+		<dd>Mindestzeit zwischen zwei tatsächlichen Schreibvorgängen desselben Befehls (Standard 10 s, <code>0</code> = aus).
+			Schützt das EMS vor Schleifen im Flow. Anfragen ohne Änderung und <code>dispatchStop</code> werden nicht blockiert.</dd>
+		<dt>SOC-Skalierung <span class="property-type">%/bit</span></dt>
+		<dd>Auflösung von <code>upsReserveSoc</code> und <code>chargeCutSoc</code>. Laut Dokumentation 0,1 %/bit, es gibt aber Anlagen
+			mit 1 %/bit. <b>Vor dem ersten Schreiben prüfen:</b> <code>readRaw</code> mit <code>{"address": 2128, "count": 1}</code> senden.
+			Ist die Reserve in der App 10 % und der Rohwert <code>10</code>, <code>1</code> einstellen; ist er <code>100</code>, bei <code>0.1</code> bleiben.</dd>
+	</dl>
+
+	<h3>Tageswerte</h3>
+	<p>Das System liefert nur Gesamtzähler. Die Node merkt sich die Zählerstände um Mitternacht (Ortszeit) und berechnet die Differenz.</p>
+	<ul>
+		<li><code>daily.since</code>: Beginn der Zählung. <code>daily.complete</code>: <code>true</code>, wenn die Zählung höchstens
+			15 Minuten nach Mitternacht begonnen hat – nur dann ist der ganze Tag erfasst. Damit lassen sich unvollständige Tage in Statistiken ignorieren.</li>
+		<li>Damit die Werte einen Neustart überstehen, in <code>settings.js</code> einen dauerhaften Speicher eintragen, Node-RED neu starten,
+			den Editor neu laden und ihn als <i>Tageswerte-Speicher</i> auswählen:
+			<pre>contextStorage: {
+    default: { module: "memory" },
+    file:    { module: "localfilesystem" }
+},</pre>
+			Im Docker-Container (offizielles Image) liegt die Datei unter <code>/data/settings.js</code>.</li>
+		<li>Existiert der gewählte Speicher nicht, nutzt Node-RED stillschweigend den Arbeitsspeicher. Die Node erkennt das und zeigt einen
+			gelben Status und eine Warnung.</li>
+		<li>Der laufende Tag lässt sich nachträglich nicht korrigieren: Korrekte Werte gibt es ab der nächsten Mitternacht.</li>
+	</ul>
+
+	<h3>MQTT</h3>
+	<p>Topics mit dem Standard-Präfix <code>alphaess</code>:</p>
+	<ul>
+		<li><code>alphaess/consumption</code>, <code>/grid</code>, <code>/modules</code>, <code>/battery</code>, <code>/soc</code>,
+			<code>/gridImport</code>, <code>/gridExport</code>, <code>/batteryCharge</code>, <code>/batteryDischarge</code>,
+			<code>/autarky</code>, <code>/selfConsumptionRate</code> – Zahlen, in jedem Zyklus</li>
+		<li><code>alphaess/daily/&lt;Feld&gt;</code> – Tageswerte, <code>alphaess/daily/complete</code> – <code>true</code>/<code>false</code></li>
+		<li><code>alphaess/status</code> – <code>ok</code> oder <code>alarm</code></li>
+		<li><code>alphaess/alarm</code> – JSON wie auf Ausgang 2, nur bei Änderung</li>
+		<li><code>alphaess/info</code> – JSON, immer mit Retain</li>
+		<li><code>alphaess/details/&lt;Block&gt;</code> – JSON, optional</li>
+	</ul>
+	<p>Wenn du Werte schon über eigene MQTT-Nodes weiterleitest, den Broker leer lassen, sonst kommen Nachrichten doppelt.</p>
+
+	<h3>Beispiele</h3>
+	<h4>Wert setzen mit Rückmeldung (link call)</h4>
+	<p>Befehle aus anderen Tabs mit einer <i>link call</i>-Node an eine <i>link in</i>-Node vor dieser Node schicken.
+		Für die Antwort Ausgang 3 mit einer <i>switch</i>-Node auf <code>msg._linkSource</code> (<i>ist nicht leer</i>) verbinden,
+		danach eine <i>link out</i>-Node im Modus <i>Return to calling link node</i>. Antworten auf Befehle, die nicht per link call
+		kamen (z. B. von einer Inject-Node), gehen auf den Ausgang <i>sonst</i>.</p>
+	<h4>Reserve-SOC abhängig von der Wetterprognose</h4>
+	<pre>// Function-Node vor dem link call
+const sun = Number(global.get("sunhourstomorrow"));
+if (!Number.isFinite(sun)) return null;
+return { topic: "timePeriod",
+         payload: { upsReserveSoc: sun >= 3 ? 10 : 20 } };</pre>
+	<p>Der Befehl darf beliebig oft gesendet werden: Ist der Wert schon gesetzt, wird nichts geschrieben und die Antwort enthält
+		<code>unchanged: true</code>.</p>
+	<h4>Werte in anderen Flows nutzen</h4>
+	<pre>// Function-Node hinter Ausgang 1
+global.set("alphaess", msg.payload);
+return { payload: msg.payload.consumption };</pre>
+	<h4>Einzelnes Register prüfen</h4>
+	<pre>{ "topic": "readRaw", "payload": { "address": 1024, "count": 10 } }</pre>
+
+	<h3>Sprachen</h3>
+	<p>Editor und Hilfe gibt es auf Englisch und Deutsch; sie folgen der Spracheinstellung des Editors.
+		Statustexte und Log-Meldungen folgen der Sprache des Node-RED-Servers. Daten in <code>msg.payload</code>
+		(Feldnamen, Alarm- und Warnungstexte) sind immer Englisch, damit Flows unabhängig von der Sprache funktionieren.</p>
+
+	<h3>Haftungsausschluss</h3>
+	<ul>
+		<li>Dies ist ein unabhängiges Community-Projekt. Es ist <b>nicht mit Alpha ESS verbunden und wird von Alpha ESS weder
+			unterstützt noch empfohlen</b>. Produktnamen dienen nur zur Beschreibung der Kompatibilität; Marken gehören ihren Inhabern.</li>
+		<li>Die Software wird <b>„wie besehen“ und ohne jede Gewährleistung</b> bereitgestellt (MIT-Lizenz). Die Nutzung erfolgt
+			<b>auf eigene Gefahr</b>; eine Haftung ist ausgeschlossen, soweit gesetzlich zulässig.</li>
+		<li>Das Lesen von Daten verändert das System nicht. <b>Schreibbefehle schon</b>: Falsche Werte können zu ungewolltem Netzbezug,
+			zu tiefer oder zu flacher Entladung, fehlender Notstromreserve oder einer Einspeisung entgegen den Vorgaben des Netzbetreibers
+			führen und die Herstellergarantie berühren.</li>
+		<li>Schreibzugriff nur aktivieren, wenn die Wirkung jedes Befehls klar ist. Mit kurzen <code>duration</code>-Werten beginnen
+			und das Ergebnis in der Hersteller-App prüfen.</li>
+		<li>Registeradressen und Skalierungen beruhen auf der Herstellerdokumentation und Tests an einzelnen Anlagen.
+			Dein Modell oder deine Firmware kann sich anders verhalten.</li>
+	</ul>
+
+	<h3>Hinweise</h3>
+	<ul>
+		<li>Nach der Installation einer neuen Version Node-RED neu starten und den Editor neu laden (F5), sonst fehlen neue Ausgänge und Einstellungen.</li>
+		<li>Sicherheitstest, Reset, CT-Kalibrierung, Netzwerk-/Modbus-Einstellungen und die MOS-Steuerung der Batterie sind bewusst nicht beschreibbar.</li>
+		<li>Registeradressen und Skalierung: <i>AlphaESS Household Modbus Register Parameter List</i>. Ältere Firmware, die nur die
+			Registerliste V1.1 kennt, wird automatisch erkannt.</li>
+	</ul>
+
+	<h3>Weitere Informationen</h3>
+	<ul>
+		<li><a href="https://github.com/impact0815/node-red-contrib-alphaess-modbus/blob/main/README.de.md">Deutsche README mit allen Feldern und Registerblöcken</a></li>
+		<li><a href="https://nodered.org/docs/user-guide/context#context-stores">Node-RED: Kontextspeicher (englisch)</a></li>
+	</ul>
+</script>

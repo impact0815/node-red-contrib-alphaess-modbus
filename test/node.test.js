@@ -5,10 +5,10 @@ const assert = require('node:assert');
 const { EventEmitter } = require('events');
 const { createRegisters, createServer, NEW_RANGES } = require('./mock-server');
 
-function fakeRED() {
+function fakeRED(extra) {
 	const types = {};
 	const nodes = {};
-	const RED = {
+	const RED = Object.assign({
 		nodes: {
 			createNode(n, cfg) {
 				EventEmitter.call(n);
@@ -30,7 +30,7 @@ function fakeRED() {
 			getNode(id) { return nodes[id]; }
 		},
 		util: { cloneMessage: (m) => JSON.parse(JSON.stringify(m)) }
-	};
+	}, extra);
 	return { RED, types, nodes };
 }
 
@@ -97,6 +97,7 @@ test('read cycle, slow blocks, alarm output, MQTT', async (t) => {
 	}, ALL)));
 	assert.ok(broker.users['n1:mqtt'], 'registered at broker');
 	assert.deepStrictEqual(n.warnings, [], 'no store warning with default store');
+	assert.deepStrictEqual(n.logs, [], 'no write notice without write access');
 
 	let r = await input(n, {});
 	assert.ifError(r.err);
@@ -121,6 +122,7 @@ test('read cycle, slow blocks, alarm output, MQTT', async (t) => {
 	assert.ok(requests.every((q) => q.unit === 85));
 	assert.ok(requests.some((q) => q.addr === 0x0010 && q.qty === 51), 'grid with 51 registers');
 	assert.ok(requests.some((q) => q.addr === 0x0400 && q.qty === 85), 'inverter with 85 registers');
+	assert.strictEqual(n.statuses.slice(-1)[0].text, 'PV 4000W | Grid -720W | SOC 87.3% | Load 980W');
 
 	const topics = broker.published.map((m) => m.topic);
 	['pv/consumption', 'pv/soc', 'pv/autarky', 'pv/daily/pv', 'pv/daily/complete', 'pv/status', 'pv/alarm', 'pv/info']
@@ -208,14 +210,12 @@ test('older firmware: automatic fallback to the register lengths of V1.1', async
 	assert.ok(n.logs.some((l) => /grid: extended registers not supported/.test(l)));
 	assert.ok(n.logs.some((l) => /batteryInfo: not supported/.test(l)));
 
-	// the fallback is remembered: second cycle only uses the short requests
 	requests.length = 0;
 	r = await input(n, {});
 	assert.ifError(r.err);
 	assert.deepStrictEqual(requests.filter((q) => q.addr === 0x0010).map((q) => q.qty), [39]);
 	assert.deepStrictEqual(requests.filter((q) => q.addr === 0x0400).map((q) => q.qty), [83]);
 
-	// re-reading device info does not try the unsupported battery block again
 	requests.length = 0;
 	r = await input(n, { topic: 'readInfo' });
 	assert.ifError(r.err);
@@ -235,6 +235,8 @@ test('write commands: output 3, unchanged detection, only changed registers, rat
 	const rw = res.node(new types['alphaess-modbus']({ id: 'rw', server: 'c', interval: 0, allowWrite: true, maxPower: 5000, writeInterval: 1 }));
 	const writes = () => requests.filter((q) => q.fc === 16).map((q) => [q.addr, q.qty]);
 	const resp = (r) => { assert.ifError(r.err); assert.strictEqual(r.out[0][0], null); assert.strictEqual(r.out[0][1], null); return r.out[0][2]; };
+
+	assert.ok(rw.logs.some((l) => /Write access is enabled.*own risk/.test(l)), 'notice at start when write access is enabled');
 
 	let r = await input(ro, { topic: 'dispatch', payload: { power: -2000 } });
 	assert.match(String(r.err), /Writing is disabled/);
@@ -302,7 +304,35 @@ test('write commands: output 3, unchanged detection, only changed registers, rat
 	m = resp(await input(rw, { topic: 'readInfo' }));
 	assert.strictEqual(m.payload.systemInfo.emsSerialNumber, 'AL9002012345678');
 	r = await input(rw, { topic: 'unknown' });
-	assert.match(String(r.err), /Unknown topic/);
+	assert.match(String(r.err), /Unknown topic "unknown"/);
+});
+
+test('runtime texts are translated with RED._, data stays English', async (t) => {
+	const res = resources(t);
+	const port = await res.server(createServer(createRegisters()));
+	const de = require('../locales/de/alphaess-modbus.json');
+	const { lookup, interpolate } = require('../lib/i18n');
+	// minimal RED._ like Node-RED with server language "de"
+	const _ = (key, vars) => {
+		const s = lookup(de, key);
+		return typeof s === 'string' ? interpolate(s, vars) : key;
+	};
+	const { RED, types } = fakeRED({ _ });
+	require('../alphaess-modbus.js')(RED);
+	res.node(new types['alphaess-modbus-config']({ id: 'c', host: '127.0.0.1', port, delay: 0 }));
+	const n = res.node(new types['alphaess-modbus']({ id: 'de', server: 'c', interval: 0,
+		block_grid: true, block_battery: true, block_inverter: true }));
+	assert.strictEqual(n.statuses[0].text, 'manueller Modus');
+
+	let r = await input(n, {});
+	assert.strictEqual(n.statuses.slice(-1)[0].text, 'PV 4000W | Netz -720W | SOC 87.3% | Last 980W');
+	assert.deepStrictEqual(r.out[0][1].payload.warnings, ['Battery: Temperature imbalance', 'Battery: Cell over voltage'],
+		'alarm and warning texts in the payload are not translated');
+
+	r = await input(n, { topic: 'dispatch', payload: { power: -1000 } });
+	assert.match(String(r.err), /Schreiben ist deaktiviert/);
+	r = await input(n, { topic: 'xyz' });
+	assert.match(String(r.err), /Unbekanntes Topic "xyz"/);
 });
 
 test('rate limit can be disabled', async (t) => {
@@ -345,6 +375,7 @@ test('polling mode', async (t) => {
 	res.node(new types['alphaess-modbus-config']({ id: 'p', host: '127.0.0.1', port, delay: 0 }));
 	const poller = res.node(new types['alphaess-modbus']({ id: 'poll', server: 'p', interval: 1, slowInterval: 300,
 		block_battery: true, block_systemConfig: true }));
+	assert.strictEqual(poller.statuses[0].text, 'polling every 1 s');
 	await sleep(2300);
 	assert.ok(poller.sent.length >= 2, `sent ${poller.sent.length}`);
 	assert.strictEqual(requests.filter((q) => q.addr === 0x0800).length, 1, 'slow block read only once');

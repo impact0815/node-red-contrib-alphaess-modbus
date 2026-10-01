@@ -1,11 +1,12 @@
 {
-	"name": "node-red-contrib-alphaess-modbus",
-	"version": "0.3.1",
-	"description": "Local Modbus TCP access to Alpha ESS storage systems for Node-RED: realtime data, daily energy, alarms, MQTT and optional control.",
+	"name": "@impact0815/node-red-contrib-alphaess-modbus",
+	"version": "0.4.0",
+	"description": "Local Modbus TCP access to Alpha ESS storage systems for Node-RED: realtime data, daily energy, alarms, MQTT and optional control. English and German.",
 	"main": "alphaess-modbus.js",
 	"scripts": {
 		"test": "node --test test/*.test.js",
-		"simulator": "node test/mock-server.js 5020"
+		"simulator": "node test/mock-server.js 5020",
+		"prepublishOnly": "npm test"
 	},
 	"keywords": [
 		"node-red",
@@ -37,12 +38,17 @@
 			"alphaess-modbus": "alphaess-modbus.js"
 		}
 	},
+	"publishConfig": {
+		"access": "public"
+	},
 	"files": [
 		"alphaess-modbus.js",
 		"alphaess-modbus.html",
 		"lib/",
+		"locales/",
 		"examples/",
 		"README.md",
+		"README.de.md",
 		"CHANGELOG.md",
 		"LICENSE"
 	]

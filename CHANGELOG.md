@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.4.0
+
+### Added
+- **English and German**: editor labels, hints, output labels and help texts in `locales/en-US` and `locales/de`;
+  status texts, log and error messages are translated as well (language of the Node-RED server).
+  Data in `msg.payload` (field names, alarm and warning texts) stays English.
+- German README (`README.de.md`)
+- Disclaimer in README, README.de.md, editor help (both nodes) and editor (short note in both dialogs)
+- Warning in the editor when *Allow write access* is enabled, and a log notice at start
+- Test `test/i18n.test.js`: same keys and placeholders in all languages, every used key exists, help complete
+
+### Changed (breaking)
+- Package name is now **`@impact0815/node-red-contrib-alphaess-modbus`** (scoped name as required by the Node-RED packaging
+  guidelines for new packages). Node types are unchanged, existing flows keep working.
+  Uninstall the old package `node-red-contrib-alphaess-modbus` before installing the new one.
+- Help texts moved from `alphaess-modbus.html` to `locales/<language>/alphaess-modbus.html`
+
+### Other
+- `.gitattributes` enforces LF line endings
+- `update-nodered.sh` removes the old unscoped package automatically
+
+## 0.3.1
+
+### Fixed
+- Stale detection compares the exact age in milliseconds; before, the age was rounded to seconds first,
+  so a block could be reported stale up to 0.5 s too late
+- Tests always close simulator and connections, also when an assertion fails (the test run no longer hangs)
+
 ## 0.3.0
 
 Based on the newer *AlphaESS Household Modbus Register Parameter List*.
