@@ -19,6 +19,28 @@ Local access to **Alpha ESS** storage systems (SMILE series, Storion) via **Modb
 Register addresses and scaling are based on the *AlphaESS Household Modbus Register Parameter List*
 (successor of *Register Parameter List V1.1*).
 
+
+## Dashboard example
+
+![AlphaESS dashboard](https://raw.githubusercontent.com/impact0815/node-red-contrib-alphaess-modbus/main/docs/images/dashboard.png)
+
+A ready-to-import, bilingual (EN/DE) dashboard for [FlowFuse Dashboard 2.0](https://dashboard.flowfuse.com/): live energy flow, battery details, PV strings, grid phases, 24 h history, daily energy balance, system health and guarded controls (dispatch, feed-in limit, time periods).
+
+→ [`examples/alphaess-dashboard-flowfuse.json`](examples/alphaess-dashboard-flowfuse.json) · [setup](#dashboard-setup)
+
+### Dashboard setup
+
+1. Install `@flowfuse/node-red-dashboard`.
+2. Import `examples/alphaess-dashboard-flowfuse.json` (Menu → Import → Examples → @impact0815/node-red-contrib-alphaess-modbus).
+3. Move the three link-out nodes **"AlphaESS → Dashboard …"** into the tab of your AlphaESS node and connect output 1 → *Data*, output 2 → *Alarm*, output 3 → *Response*.
+4. Move the link-in node **"Dashboard command → AlphaESS"** there as well and connect it to the **input** of the AlphaESS node.
+5. Deploy and open `/dashboard/alphaess`.
+
+Controls are locked by default. Write commands are only sent while the controls are unlocked in the dashboard (10 minutes), after a second confirmation and server-side validation, and only if *Allow write access* is enabled in the AlphaESS node. History is stored in the `file` context store if configured.
+
+If you already use Dashboard 2.0, delete the imported `ui-base` "AlphaESS" and assign the page "AlphaESS" to your own dashboard – only one `ui-base` is supported per Node-RED instance.
+
+
 ## Disclaimer
 
 > **Use at your own risk. No warranty.**

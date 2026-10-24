@@ -19,6 +19,27 @@ Lokaler Zugriff auf **Alpha-ESS**-Speichersysteme (SMILE-Serie, Storion) per **M
 Registeradressen und Skalierungen beruhen auf der *AlphaESS Household Modbus Register Parameter List*
 (Nachfolger der *Register Parameter List V1.1*).
 
+## Dashboard-Beispiel
+
+![AlphaESS-Dashboard](https://raw.githubusercontent.com/impact0815/node-red-contrib-alphaess-modbus/main/docs/images/dashboard.png)
+
+Ein direkt importierbares, zweisprachiges (DE/EN) Dashboard für [FlowFuse Dashboard 2.0](https://dashboard.flowfuse.com/): Live-Energiefluss, Batteriedetails, PV-Strings, Netzphasen, 24-h-Verlauf, Tagesbilanz, Systemzustand und abgesicherte Steuerung (Dispatch, Einspeisegrenze, Zeitfenster).
+
+→ [`examples/alphaess-dashboard-flowfuse.json`](examples/alphaess-dashboard-flowfuse.json) · [Einrichtung](#dashboard-einrichtung)
+
+### Dashboard-Einrichtung
+
+1. `@flowfuse/node-red-dashboard` installieren.
+2. `examples/alphaess-dashboard-flowfuse.json` importieren (Menü → Import → Beispiele → @impact0815/node-red-contrib-alphaess-modbus).
+3. Die drei Link-Out-Nodes **„AlphaESS → Dashboard …“** in den Tab deiner AlphaESS-Node verschieben und verbinden: Ausgang 1 → *Data*, Ausgang 2 → *Alarm*, Ausgang 3 → *Response*.
+4. Die Link-In-Node **„Dashboard command → AlphaESS“** ebenfalls verschieben und mit dem **Eingang** der AlphaESS-Node verbinden.
+5. Deployen und `/dashboard/alphaess` öffnen.
+
+Die Steuerung ist standardmäßig gesperrt. Schreibbefehle werden nur gesendet, wenn die Steuerung im Dashboard freigeschaltet ist (10 Minuten), nach einer zweiten Bestätigung und serverseitiger Prüfung, und nur wenn in der AlphaESS-Node *Allow write access* aktiv ist. Der Verlauf wird im Context-Store `file` gespeichert, sofern vorhanden.
+
+Wenn du Dashboard 2.0 bereits nutzt, lösche die importierte `ui-base` „AlphaESS“ und weise die Seite „AlphaESS“ deinem eigenen Dashboard zu – pro Node-RED-Instanz wird nur eine `ui-base` unterstützt.
+
+
 ## Haftungsausschluss
 
 > **Nutzung auf eigene Gefahr. Keine Gewährleistung.**
