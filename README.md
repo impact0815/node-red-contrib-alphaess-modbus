@@ -394,6 +394,24 @@ return { payload: y };
 
 Keep `duration` short and repeat the command if needed. If the flow stops, the system returns to normal operation by itself.
 
+### Optional PV string diagnostics
+
+An optional FlowFuse Dashboard 2.0 add-on compares two PV strings even when their installed capacities differ.
+
+Instead of comparing the raw wattage directly, the dashboard normalizes each string by its configured installed capacity. For example:
+
+- PV1: 10 × 405 Wp = 4.05 kWp
+- PV2: 8 × 405 Wp = 3.24 kWp
+- Expected power ratio under comparable conditions: 1.25 : 1
+
+The add-on uses several qualified samples to reduce short cloud, shade and MPPT effects and can highlight a string that performs noticeably below the other one.
+
+Panel count, panel wattage, minimum evaluation power, warning/critical thresholds and smoothing can be configured in the dashboard and are stored persistently.
+
+→ examples/07-pv-string-diagnostics-flowfuse.json  
+→ examples/07-pv-string-diagnostics-README.md
+
+
 ## Troubleshooting
 
 | Symptom | Cause and solution |
