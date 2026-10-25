@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.3
+
+### Added
+- Configurable PV string diagnostics add-on for FlowFuse Dashboard 2.0
+- Normalized comparison of two PV strings with different installed DC capacities
+- Configurable panel count and panel wattage per string
+- Configurable minimum PV power, warning/critical thresholds and smoothing
+- Persistent PV string configuration via Node-RED context storage
+- English and German documentation for the dashboard examples
+- `examples/README.md` and `examples/README.de.md`
+
+### Changed
+- Extended the dashboard example documentation with PV string diagnostics
+
+### Other
+- Documentation and examples only; no AlphaESS Modbus runtime changes
+
 ## 0.4.0
 
 ### Added
